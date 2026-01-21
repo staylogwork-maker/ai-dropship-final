@@ -75,12 +75,232 @@ app.logger.info('=' * 70)
 app.logger.info('AI Dropshipping ERP System v2.0 - Starting Up')
 app.logger.info('=' * 70)
 
+# ============================================================================
+# AUTO DATABASE INITIALIZATION
+# ============================================================================
+
+DB_PATH = 'dropship.db'
+
+def auto_init_database():
+    """
+    Automatically initialize database if it doesn't exist or is missing tables.
+    This prevents sqlite3.OperationalError: no such table errors.
+    """
+    needs_init = False
+    
+    # Check if database file exists
+    if not os.path.exists(DB_PATH):
+        app.logger.warning(f'Database file not found: {DB_PATH}')
+        needs_init = True
+    else:
+        # Check if required tables exist
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+            if not cursor.fetchone():
+                app.logger.warning('Required table "users" not found in database')
+                needs_init = True
+            conn.close()
+        except Exception as e:
+            app.logger.error(f'Error checking database: {e}')
+            needs_init = True
+    
+    if needs_init:
+        app.logger.info('🔧 Initializing database automatically...')
+        try:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            
+            # Create users table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create config table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS config (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create sourced_products table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS sourced_products (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    original_url TEXT NOT NULL,
+                    title_cn TEXT,
+                    title_kr TEXT,
+                    description_cn TEXT,
+                    description_kr TEXT,
+                    marketing_copy TEXT,
+                    price_cny REAL,
+                    price_krw INTEGER,
+                    profit_margin REAL,
+                    estimated_profit INTEGER,
+                    traffic_score INTEGER,
+                    safety_status TEXT,
+                    images_json TEXT,
+                    processed_images_json TEXT,
+                    status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    approved_at TIMESTAMP,
+                    registered_at TIMESTAMP
+                )
+            ''')
+            
+            # Create orders table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS orders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_number TEXT UNIQUE NOT NULL,
+                    marketplace TEXT NOT NULL,
+                    product_id INTEGER,
+                    customer_name TEXT,
+                    customer_phone TEXT,
+                    customer_address TEXT,
+                    pccc TEXT NOT NULL,
+                    pccc_validated BOOLEAN DEFAULT 0,
+                    quantity INTEGER DEFAULT 1,
+                    sale_price INTEGER NOT NULL,
+                    purchase_price_cny REAL,
+                    purchase_price_krw INTEGER,
+                    applied_exchange_rate REAL NOT NULL,
+                    shipping_cost INTEGER,
+                    customs_tax INTEGER,
+                    marketplace_fee INTEGER,
+                    net_profit INTEGER,
+                    original_product_url TEXT,
+                    tracking_number TEXT,
+                    order_status TEXT DEFAULT 'pending',
+                    payment_status TEXT DEFAULT 'paid',
+                    shipping_deadline TIMESTAMP,
+                    ordered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    shipped_at TIMESTAMP,
+                    delivered_at TIMESTAMP,
+                    FOREIGN KEY (product_id) REFERENCES sourced_products (id)
+                )
+            ''')
+            
+            # Create activity_logs table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS activity_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    action_type TEXT NOT NULL,
+                    description TEXT,
+                    status TEXT,
+                    details_json TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create tax_records table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tax_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    order_id INTEGER,
+                    order_number TEXT,
+                    sale_date DATE,
+                    sale_amount INTEGER,
+                    purchase_amount INTEGER,
+                    shipping_cost INTEGER,
+                    marketplace_fee INTEGER,
+                    net_profit INTEGER,
+                    applied_exchange_rate REAL,
+                    exported BOOLEAN DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (order_id) REFERENCES orders (id)
+                )
+            ''')
+            
+            # Create marketplace_listings table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS marketplace_listings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_id INTEGER,
+                    marketplace TEXT NOT NULL,
+                    external_product_id TEXT,
+                    listing_url TEXT,
+                    current_stock INTEGER DEFAULT 0,
+                    status TEXT DEFAULT 'active',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP,
+                    FOREIGN KEY (product_id) REFERENCES sourced_products (id)
+                )
+            ''')
+            
+            # Create stock_monitor_log table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS stock_monitor_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    product_id INTEGER,
+                    original_url TEXT,
+                    check_status TEXT,
+                    action_taken TEXT,
+                    checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (product_id) REFERENCES sourced_products (id)
+                )
+            ''')
+            
+            # Check if default admin user exists
+            cursor.execute("SELECT COUNT(*) FROM users WHERE username='admin'")
+            if cursor.fetchone()[0] == 0:
+                default_password = 'admin123'
+                password_hash = generate_password_hash(default_password, method='pbkdf2:sha256')
+                cursor.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)',
+                             ('admin', password_hash))
+                app.logger.info('✅ Default admin user created (username: admin, password: admin123)')
+            
+            # Insert default configuration if config table is empty
+            cursor.execute("SELECT COUNT(*) FROM config")
+            if cursor.fetchone()[0] == 0:
+                default_configs = [
+                    ('target_margin_rate', '30'),
+                    ('cny_exchange_rate', '190'),
+                    ('exchange_rate_buffer', '1.05'),
+                    ('shipping_cost_base', '5000'),
+                    ('customs_tax_rate', '0.10'),
+                    ('naver_fee_rate', '0.06'),
+                    ('coupang_fee_rate', '0.11'),
+                    ('auto_register', 'false'),
+                    ('scrapingant_api_key', ''),
+                    ('openai_api_key', ''),
+                    ('naver_client_id', ''),
+                    ('naver_client_secret', ''),
+                    ('coupang_access_key', ''),
+                    ('coupang_secret_key', ''),
+                    ('server_static_ip', ''),
+                ]
+                cursor.executemany('INSERT INTO config (key, value) VALUES (?, ?)', default_configs)
+                app.logger.info('✅ Default configuration inserted')
+            
+            conn.commit()
+            conn.close()
+            
+            app.logger.info('✅ Database initialized successfully!')
+            app.logger.info(f'📁 Database: {DB_PATH}')
+            app.logger.info('⚠️  Default credentials: admin / admin123')
+            
+        except Exception as e:
+            app.logger.error(f'❌ Failed to initialize database: {e}')
+            raise
+    else:
+        app.logger.info(f'✅ Database OK: {DB_PATH}')
+
+# Run auto-initialization on startup
+auto_init_database()
+
 # Flask-Login setup
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
-
-DB_PATH = 'dropship.db'
 
 # ============================================================================
 # JINJA2 CUSTOM FILTERS
