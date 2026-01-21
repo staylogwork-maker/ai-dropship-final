@@ -26,71 +26,32 @@ import threading
 import logging
 from logging.handlers import RotatingFileHandler
 
-app = Flask(__name__)
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
-
 # ============================================================================
-# LOGGING CONFIGURATION
+# DATABASE PATH CONFIGURATION (MUST BE FIRST)
 # ============================================================================
 
-# Create logs directory if it doesn't exist
-if not os.path.exists('logs'):
-    os.makedirs('logs')
+# Get absolute path to ensure same DB regardless of working directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, 'dropship.db')
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-
-# File handler with rotation (max 10MB, keep 5 backup files)
-file_handler = RotatingFileHandler(
-    'logs/server.log',
-    maxBytes=10 * 1024 * 1024,  # 10MB
-    backupCount=5,
-    encoding='utf-8'
-)
-file_handler.setLevel(logging.INFO)
-file_handler.setFormatter(logging.Formatter(
-    '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-))
-
-# Console handler
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-console_handler.setFormatter(logging.Formatter(
-    '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-))
-
-# Add handlers to app logger
-app.logger.addHandler(file_handler)
-app.logger.addHandler(console_handler)
-app.logger.setLevel(logging.INFO)
-
-# Log startup
-app.logger.info('=' * 70)
-app.logger.info('AI Dropshipping ERP System v2.0 - Starting Up')
-app.logger.info('=' * 70)
+print(f"[INIT] Database path: {DB_PATH}")
+print(f"[INIT] Base directory: {BASE_DIR}")
 
 # ============================================================================
-# AUTO DATABASE INITIALIZATION
+# CRITICAL: AUTO DATABASE INITIALIZATION (BEFORE FLASK APP)
 # ============================================================================
-
-DB_PATH = 'dropship.db'
 
 def auto_init_database():
     """
     Automatically initialize database if it doesn't exist or is missing tables.
     This prevents sqlite3.OperationalError: no such table errors.
+    CRITICAL: Must run BEFORE Flask app initialization.
     """
     needs_init = False
     
     # Check if database file exists
     if not os.path.exists(DB_PATH):
-        app.logger.warning(f'Database file not found: {DB_PATH}')
+        print(f'[DB-INIT] Database file not found: {DB_PATH}')
         needs_init = True
     else:
         # Check if required tables exist
@@ -99,15 +60,15 @@ def auto_init_database():
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
             if not cursor.fetchone():
-                app.logger.warning('Required table "users" not found in database')
+                print('[DB-INIT] Required table "users" not found in database')
                 needs_init = True
             conn.close()
         except Exception as e:
-            app.logger.error(f'Error checking database: {e}')
+            print(f'[DB-INIT] Error checking database: {e}')
             needs_init = True
     
     if needs_init:
-        app.logger.info('🔧 Initializing database automatically...')
+        print('[DB-INIT] 🔧 Initializing database automatically...')
         try:
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
@@ -256,7 +217,7 @@ def auto_init_database():
                 password_hash = generate_password_hash(default_password, method='pbkdf2:sha256')
                 cursor.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)',
                              ('admin', password_hash))
-                app.logger.info('✅ Default admin user created (username: admin, password: admin123)')
+                print('[DB-INIT] ✅ Default admin user created (username: admin, password: admin123)')
             
             # Insert default configuration if config table is empty
             cursor.execute("SELECT COUNT(*) FROM config")
@@ -279,23 +240,78 @@ def auto_init_database():
                     ('server_static_ip', ''),
                 ]
                 cursor.executemany('INSERT INTO config (key, value) VALUES (?, ?)', default_configs)
-                app.logger.info('✅ Default configuration inserted')
+                print('[DB-INIT] ✅ Default configuration inserted')
             
             conn.commit()
             conn.close()
             
-            app.logger.info('✅ Database initialized successfully!')
-            app.logger.info(f'📁 Database: {DB_PATH}')
-            app.logger.info('⚠️  Default credentials: admin / admin123')
+            print('[DB-INIT] ✅ Database initialized successfully!')
+            print(f'[DB-INIT] 📁 Database: {DB_PATH}')
+            print('[DB-INIT] ⚠️  Default credentials: admin / admin123')
             
         except Exception as e:
-            app.logger.error(f'❌ Failed to initialize database: {e}')
+            print(f'[DB-INIT] ❌ Failed to initialize database: {e}')
+            import traceback
+            traceback.print_exc()
             raise
     else:
-        app.logger.info(f'✅ Database OK: {DB_PATH}')
+        print(f'[DB-INIT] ✅ Database OK: {DB_PATH}')
 
-# Run auto-initialization on startup
+# RUN DATABASE INITIALIZATION IMMEDIATELY
 auto_init_database()
+
+# ============================================================================
+# FLASK APP INITIALIZATION (AFTER DATABASE IS READY)
+# ============================================================================
+
+app = Flask(__name__)
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+
+# Create logs directory if it doesn't exist
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# File handler with rotation (max 10MB, keep 5 backup files)
+file_handler = RotatingFileHandler(
+    'logs/server.log',
+    maxBytes=10 * 1024 * 1024,  # 10MB
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+))
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+))
+
+# Add handlers to app logger
+app.logger.addHandler(file_handler)
+app.logger.addHandler(console_handler)
+app.logger.setLevel(logging.INFO)
+
+# Log startup
+app.logger.info('=' * 70)
+app.logger.info('AI Dropshipping ERP System v2.0 - Starting Up')
+app.logger.info('=' * 70)
 
 # Flask-Login setup
 login_manager = LoginManager()
