@@ -71,12 +71,9 @@
                 </div>
                 <div class="flex items-center space-x-3">
                     <span class="text-green-400 text-sm">Last 100 lines</span>
-                    <button onclick="location.reload()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-1 rounded text-sm transition">
-                        🔄 Refresh
+                    <button onclick="location.reload()" class="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-2 rounded-lg text-base transition shadow-lg hover:shadow-xl">
+                        🔄 로그 새로고침
                     </button>
-                    <span id="auto-refresh-indicator" class="text-yellow-400 text-sm">
-                        <span class="blink">●</span> Auto-refresh: 5s
-                    </span>
                 </div>
             </div>
             
@@ -149,30 +146,6 @@
     </div>
     
     <script>
-        // Auto-refresh every 5 seconds
-        let refreshInterval;
-        let countdown = 5;
-        
-        function startAutoRefresh() {
-            refreshInterval = setInterval(() => {
-                countdown--;
-                if (countdown <= 0) {
-                    location.reload();
-                }
-            }, 1000);
-        }
-        
-        // Update countdown display
-        setInterval(() => {
-            const indicator = document.getElementById('auto-refresh-indicator');
-            if (indicator && countdown > 0) {
-                indicator.innerHTML = `<span class="blink">●</span> Auto-refresh: ${countdown}s`;
-            }
-        }, 1000);
-        
-        // Start auto-refresh
-        startAutoRefresh();
-        
         // Scroll to bottom on load
         window.addEventListener('load', () => {
             const logContainer = document.querySelector('.terminal .p-4');
