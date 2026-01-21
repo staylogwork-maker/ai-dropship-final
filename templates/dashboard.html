@@ -195,22 +195,34 @@
     <!-- Sourcing Modal -->
     <div id="sourcing-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div class="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">🔍 AI 소싱 시작</h2>
-            <p class="text-gray-600 mb-6">1688에서 수익성 높은 상품을 자동으로 발굴합니다</p>
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">🌊 Blue Ocean AI 소싱</h2>
+            <p class="text-gray-600 mb-4">AI가 경쟁이 낮고 수요가 높은 <span class="font-bold text-blue-600">'블루오션'</span> 키워드를 찾아드립니다!</p>
+            
+            <div class="bg-blue-50 border-l-4 border-blue-500 p-3 mb-4 text-sm">
+                <p class="text-blue-800 font-semibold">✨ AI 분석 기능:</p>
+                <ul class="text-blue-700 mt-1 space-y-1 ml-4">
+                    <li>• 계절/트렌드 기반 시장 분석</li>
+                    <li>• 대기업 미진입 틈새시장 발굴</li>
+                    <li>• 구체적인 롱테일 키워드 추천</li>
+                </ul>
+            </div>
             
             <div class="mb-4">
-                <label class="block text-gray-700 text-sm font-bold mb-2">검색 키워드</label>
+                <label class="block text-gray-700 text-sm font-bold mb-2">
+                    검색 키워드 <span class="text-gray-400 text-xs">(선택사항)</span>
+                </label>
                 <input 
                     type="text" 
                     id="sourcing-keyword" 
                     class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="예: 무선이어폰, 스마트워치"
+                    placeholder="예: 무선이어폰 (비워두면 AI가 자동 추천)"
                 >
+                <p class="text-xs text-gray-500 mt-1">💡 키워드를 입력하거나, 비워두면 AI가 최적의 블루오션 키워드를 찾아드립니다</p>
             </div>
             
             <div class="flex gap-3">
-                <button onclick="startSourcing()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">
-                    시작
+                <button onclick="startSourcing()" class="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold py-3 px-4 rounded-lg">
+                    🚀 AI 분석 시작
                 </button>
                 <button onclick="closeSourcingModal()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-4 rounded-lg">
                     취소
@@ -219,8 +231,8 @@
             
             <div id="sourcing-progress" class="hidden mt-4">
                 <div class="bg-blue-50 border-l-4 border-blue-500 p-4">
-                    <p class="text-blue-700 font-semibold">소싱 진행 중...</p>
-                    <p class="text-blue-600 text-sm mt-1">결과는 활동 로그에서 확인할 수 있습니다</p>
+                    <p class="text-blue-700 font-semibold">🌊 Blue Ocean 분석 중...</p>
+                    <p class="text-blue-600 text-sm mt-1">AI가 시장을 분석하고 최적의 상품을 찾고 있습니다</p>
                 </div>
             </div>
         </div>
@@ -329,10 +341,12 @@
         
         async function startSourcing() {
             const keyword = document.getElementById('sourcing-keyword').value;
-            if (!keyword) {
-                alert('키워드를 입력해주세요');
-                return;
-            }
+            
+            // Allow empty keyword for AI to suggest
+            // if (!keyword) {
+            //     alert('키워드를 입력해주세요');
+            //     return;
+            // }
             
             document.getElementById('sourcing-progress').classList.remove('hidden');
             
@@ -340,13 +354,33 @@
                 const response = await fetch('/api/sourcing/start', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({keyword: keyword})
+                    body: JSON.stringify({keyword: keyword || ''})
                 });
                 
                 const result = await response.json();
                 
                 if (result.success) {
-                    alert(`소싱 완료!\n스캔: ${result.total_scanned}개\n안전필터 통과: ${result.safety_passed}개\n수익성 통과: ${result.profitable}개\nTOP 선정: ${result.top_products}개`);
+                    const blueOcean = result.blue_ocean_analysis;
+                    
+                    let message = '🌊 Blue Ocean 소싱 완료!\n\n';
+                    
+                    if (blueOcean.analysis_performed) {
+                        message += '📊 AI 시장 분석 결과:\n';
+                        message += `입력: "${blueOcean.original_keyword || '(없음)'}"\n`;
+                        message += `→ AI 추천: "${blueOcean.suggested_keyword}"\n\n`;
+                        message += `💡 선정 이유:\n${blueOcean.reasoning}\n\n`;
+                    } else {
+                        message += `검색 키워드: "${blueOcean.suggested_keyword}"\n\n`;
+                    }
+                    
+                    message += `📈 분석 결과:\n`;
+                    message += `- 스캔: ${result.total_scanned}개\n`;
+                    message += `- 안전필터 통과: ${result.safety_passed}개\n`;
+                    message += `- 수익성 통과: ${result.profitable}개\n`;
+                    message += `- ⭐ TOP 선정: ${result.top_products}개\n\n`;
+                    message += '상품 관리 페이지에서 확인하세요!';
+                    
+                    alert(message);
                     location.reload();
                 } else {
                     alert('소싱 실패: ' + (result.error || '알 수 없는 오류'));

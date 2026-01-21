@@ -208,7 +208,7 @@ def logout():
     return redirect(url_for('login'))
 
 # ============================================================================
-# MODULE 2: AI SOURCING ENGINE WITH SAFETY FILTERS
+# MODULE 2: AI SOURCING ENGINE WITH SAFETY FILTERS & BLUE OCEAN ANALYSIS
 # ============================================================================
 
 # Safety filter keywords
@@ -220,6 +220,139 @@ BANNED_KEYWORDS = {
     'replica': ['Nike', 'Adidas', 'Gucci', 'LV', 'Louis Vuitton', 'Chanel', 
                 'Disney', '迪士尼', 'Supreme', 'Rolex', 'Apple']
 }
+
+def analyze_blue_ocean_market(user_keyword=''):
+    """
+    Advanced Blue Ocean Market Analysis using GPT-4
+    Finds niche opportunities with rising demand and low competition
+    """
+    api_key = get_config('openai_api_key')
+    if not api_key:
+        app.logger.warning('OpenAI API key not configured, using user keyword directly')
+        return {
+            'suggested_keyword': user_keyword if user_keyword else '무선이어폰',
+            'reasoning': 'OpenAI API key not configured. Using provided keyword.',
+            'analysis_performed': False
+        }
+    
+    # Get current date and season for context
+    now = datetime.now()
+    current_month = now.month
+    
+    # Determine Korean season
+    if current_month in [3, 4, 5]:
+        season = '봄 (Spring)'
+    elif current_month in [6, 7, 8]:
+        season = '여름 (Summer)'
+    elif current_month in [9, 10, 11]:
+        season = '가을 (Fall)'
+    else:
+        season = '겨울 (Winter)'
+    
+    # Advanced Blue Ocean Analysis Prompt
+    prompt = f"""당신은 대한민국 E-커머스의 수석 MD이자 데이터 분석 전문가입니다.
+
+【현재 상황】
+- 날짜: {now.strftime('%Y년 %m월 %d일')}
+- 계절: {season}
+- 분석 기간: 향후 2주~1개월 내 판매 폭발 예상 상품
+
+【사용자 관심 키워드】
+"{user_keyword if user_keyword else '없음 (자유 선정)'}"
+
+【미션】
+위 키워드를 참고하되, 다음 3가지 조건을 모두 만족하는 '블루오션(Blue Ocean)' 상품 키워드 1개를 찾아내세요:
+
+1. Rising Trend (급상승 트렌드)
+   - 최근 검색량이 급증하고 있거나, 다가올 시즌에 수요 폭발 예상
+   - 계절성, 이벤트, 신규 트렌드를 고려
+
+2. Low Competition (낮은 경쟁 강도)
+   - 대기업 브랜드(삼성, LG, 나이키 등)가 장악하지 않은 카테고리
+   - 중소 셀러가 진입 가능한 틈새시장
+
+3. Specificity (구체적인 롱테일 키워드)
+   - 너무 광범위한 키워드(예: '가습기') 대신
+   - 구체적이고 니치한 키워드(예: '무선 무드등 탁상용 가습기')
+   - 1688에서 검색 가능한 구체적인 상품명
+
+【출력 형식】
+JSON 형식으로만 응답하세요:
+{{
+  "keyword": "정밀한 블루오션 키워드 (한국어)",
+  "reasoning": "이 키워드를 선정한 이유를 1~2문장으로 설명",
+  "trend_score": 1-10 사이 점수,
+  "competition_score": 1-10 사이 점수 (낮을수록 좋음)
+}}
+
+예시:
+{{
+  "keyword": "반려동물 자동 급식기 카메라",
+  "reasoning": "1인 가구 증가로 펫테크 수요 급증, 대기업 미진입 영역",
+  "trend_score": 9,
+  "competition_score": 3
+}}"""
+
+    try:
+        app.logger.info('Calling GPT-4 for Blue Ocean market analysis...')
+        
+        response = requests.post(
+            'https://api.openai.com/v1/chat/completions',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'model': 'gpt-4',
+                'messages': [
+                    {
+                        'role': 'system',
+                        'content': '당신은 한국 E-커머스 시장의 전문 MD이자 트렌드 분석가입니다. 블루오션 시장을 발굴하는 전문가입니다.'
+                    },
+                    {
+                        'role': 'user',
+                        'content': prompt
+                    }
+                ],
+                'temperature': 0.8,
+                'max_tokens': 500,
+                'response_format': {'type': 'json_object'}
+            },
+            timeout=30
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            content = result['choices'][0]['message']['content']
+            
+            # Parse JSON response
+            import json
+            analysis = json.loads(content)
+            
+            app.logger.info(f'Blue Ocean Analysis Result: {analysis.get("keyword")}')
+            
+            return {
+                'suggested_keyword': analysis.get('keyword', user_keyword or '무선이어폰'),
+                'reasoning': analysis.get('reasoning', 'AI 분석 완료'),
+                'trend_score': analysis.get('trend_score', 0),
+                'competition_score': analysis.get('competition_score', 0),
+                'analysis_performed': True
+            }
+        else:
+            app.logger.error(f'GPT-4 API error: {response.status_code}')
+            return {
+                'suggested_keyword': user_keyword if user_keyword else '무선이어폰',
+                'reasoning': f'AI 분석 실패 (API 오류: {response.status_code})',
+                'analysis_performed': False
+            }
+    
+    except Exception as e:
+        app.logger.error(f'Blue Ocean analysis failed: {str(e)}')
+        return {
+            'suggested_keyword': user_keyword if user_keyword else '무선이어폰',
+            'reasoning': f'AI 분석 실패: {str(e)}',
+            'analysis_performed': False
+        }
 
 def check_safety_filter(title, description=''):
     """Check if product passes safety filter"""
@@ -315,28 +448,42 @@ def analyze_product_profitability(price_cny):
 @app.route('/api/sourcing/start', methods=['POST'])
 @login_required
 def start_sourcing():
-    """Start AI sourcing process"""
+    """Start AI sourcing process with Blue Ocean market analysis"""
     data = request.json
-    keyword = data.get('keyword', '')
+    user_keyword = data.get('keyword', '')
     
-    if not keyword:
-        return jsonify({'error': 'Keyword required'}), 400
+    app.logger.info(f'=== AI Sourcing Started by {current_user.username} ===')
+    app.logger.info(f'User input keyword: {user_keyword}')
     
-    log_activity('sourcing', f'Starting sourcing for keyword: {keyword}', 'in_progress')
+    # Step 0: Blue Ocean Market Analysis (NEW!)
+    log_activity('sourcing', 'Step 0/4: 🌊 Blue Ocean Market Analysis - Finding niche opportunity...', 'in_progress')
     
-    # Step 1: Initial scan (50 products)
-    log_activity('sourcing', 'Step 1/3: Initial scan (50 products)', 'in_progress')
-    results = scrape_1688_search(keyword, max_results=50)
+    blue_ocean_result = analyze_blue_ocean_market(user_keyword)
+    final_keyword = blue_ocean_result['suggested_keyword']
+    reasoning = blue_ocean_result['reasoning']
+    
+    app.logger.info(f'Blue Ocean Analysis Result:')
+    app.logger.info(f'  - Suggested Keyword: {final_keyword}')
+    app.logger.info(f'  - Reasoning: {reasoning}')
+    
+    log_activity('sourcing', 
+                f'🎯 Blue Ocean Keyword Selected: "{final_keyword}"', 
+                'success',
+                {'reasoning': reasoning, 'original_keyword': user_keyword})
+    
+    # Step 1: Initial scan (50 products) with AI-suggested keyword
+    log_activity('sourcing', f'Step 1/4: Scanning 1688 with keyword "{final_keyword}"', 'in_progress')
+    results = scrape_1688_search(final_keyword, max_results=50)
     
     if 'error' in results:
         log_activity('sourcing', f'Scraping failed: {results["error"]}', 'error')
         return jsonify({'error': results['error']}), 500
     
     products = results.get('products', [])
-    log_activity('sourcing', f'Found {len(products)} products', 'success')
+    log_activity('sourcing', f'Found {len(products)} products for "{final_keyword}"', 'success')
     
     # Step 2: Safety filter
-    log_activity('sourcing', 'Step 2/3: Applying safety filters', 'in_progress')
+    log_activity('sourcing', 'Step 2/4: Applying safety filters', 'in_progress')
     safe_products = []
     for product in products:
         is_safe, reason = check_safety_filter(product['title'])
@@ -344,6 +491,69 @@ def start_sourcing():
             safe_products.append(product)
         else:
             log_activity('sourcing', f'Filtered out: {product["title"][:50]} - {reason}', 'warning')
+    
+    log_activity('sourcing', f'{len(safe_products)} products passed safety filter', 'success')
+    
+    # Step 3: Profitability analysis
+    log_activity('sourcing', 'Step 3/4: Analyzing profitability', 'in_progress')
+    analyzed_products = []
+    target_margin = float(get_config('target_margin_rate', 30))
+    
+    for product in safe_products:
+        analysis = analyze_product_profitability(product['price'])
+        
+        if analysis['margin'] >= target_margin:
+            product['analysis'] = analysis
+            analyzed_products.append(product)
+    
+    # Sort by profit and get top 3
+    analyzed_products.sort(key=lambda x: x['analysis']['profit'], reverse=True)
+    top_products = analyzed_products[:3]
+    
+    log_activity('sourcing', f'Top 3 profitable products selected from {len(analyzed_products)} candidates', 'success')
+    
+    # Step 4: Save to database
+    log_activity('sourcing', 'Step 4/4: Saving results to database', 'in_progress')
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    for product in top_products:
+        cursor.execute('''
+            INSERT INTO sourced_products 
+            (original_url, title_cn, price_cny, price_krw, profit_margin, 
+             estimated_profit, safety_status, images_json, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            product['url'],
+            product['title'],
+            product['price'],
+            product['analysis']['sale_price'],
+            product['analysis']['margin'],
+            product['analysis']['profit'],
+            'passed',
+            json.dumps([product['image']]),
+            'pending'
+        ))
+    
+    conn.commit()
+    conn.close()
+    
+    app.logger.info(f'=== Sourcing Completed Successfully ===')
+    log_activity('sourcing', f'✅ Sourcing completed. {len(top_products)} Blue Ocean products saved', 'success')
+    
+    return jsonify({
+        'success': True,
+        'blue_ocean_analysis': {
+            'original_keyword': user_keyword,
+            'suggested_keyword': final_keyword,
+            'reasoning': reasoning,
+            'analysis_performed': blue_ocean_result.get('analysis_performed', False)
+        },
+        'total_scanned': len(products),
+        'safety_passed': len(safe_products),
+        'profitable': len(analyzed_products),
+        'top_products': len(top_products)
+    })
     
     log_activity('sourcing', f'{len(safe_products)} products passed safety filter', 'success')
     
