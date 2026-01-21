@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>대시보드 - AI Dropshipping ERP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    {% include 'nav.html' %}
+    
+    <div class="container mx-auto px-4 py-8">
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">📊 실시간 대시보드</h1>
+            <p class="text-gray-600">AI 드롭쉬핑 ERP - 완전 자동화 시스템</p>
+        </div>
+        
+        <!-- Statistics Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow-lg p-6 border-l-4 border-blue-500">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-600 text-sm font-semibold">승인 대기 상품</p>
+                        <p class="text-3xl font-bold text-gray-800 mt-2">{{ pending_products }}</p>
+                    </div>
+                    <div class="bg-blue-100 rounded-full p-3">
+                        <span class="text-3xl">📦</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-lg p-6 border-l-4 border-yellow-500">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-600 text-sm font-semibold">처리 대기 주문</p>
+                        <p class="text-3xl font-bold text-gray-800 mt-2">{{ pending_orders }}</p>
+                    </div>
+                    <div class="bg-yellow-100 rounded-full p-3">
+                        <span class="text-3xl">📋</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-lg p-6 border-l-4 border-red-500">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-600 text-sm font-semibold">긴급 주문 (24h)</p>
+                        <p class="text-3xl font-bold text-gray-800 mt-2">{{ urgent_orders }}</p>
+                    </div>
+                    <div class="bg-red-100 rounded-full p-3">
+                        <span class="text-3xl">⚠️</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-lg shadow-lg p-6 border-l-4 border-green-500">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-gray-600 text-sm font-semibold">누적 순수익</p>
+                        <p class="text-3xl font-bold text-gray-800 mt-2">{{ "{:,}".format(total_profit) }}원</p>
+                    </div>
+                    <div class="bg-green-100 rounded-full p-3">
+                        <span class="text-3xl">💰</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">🎯 빠른 작업</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <button onclick="openSourcingModal()" class="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold py-4 px-6 rounded-lg transition duration-200 flex items-center justify-center">
+                    <span class="mr-2">🔍</span> AI 소싱 시작
+                </button>
+                <a href="{{ url_for('products') }}" class="bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white font-bold py-4 px-6 rounded-lg transition duration-200 flex items-center justify-center text-center">
+                    <span class="mr-2">📦</span> 상품 관리
+                </a>
+                <a href="{{ url_for('orders') }}" class="bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700 text-white font-bold py-4 px-6 rounded-lg transition duration-200 flex items-center justify-center text-center">
+                    <span class="mr-2">📋</span> 주문 관리
+                </a>
+            </div>
+        </div>
+        
+        <!-- Live Activity Log -->
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-2xl font-bold text-gray-800">📡 실시간 활동 로그</h2>
+                <span class="flex items-center text-sm text-green-600">
+                    <span class="w-2 h-2 bg-green-600 rounded-full mr-2 animate-pulse"></span>
+                    실시간 업데이트 중
+                </span>
+            </div>
+            
+            <div id="activity-logs" class="space-y-2 max-h-96 overflow-y-auto">
+                {% for log in recent_logs %}
+                <div class="border-l-4 {% if log.status == 'success' %}border-green-500{% elif log.status == 'error' %}border-red-500{% elif log.status == 'warning' %}border-yellow-500{% else %}border-blue-500{% endif %} bg-gray-50 p-3 rounded">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <span class="font-semibold text-gray-700">{{ log.action_type }}</span>
+                            <span class="text-gray-600 ml-2">{{ log.description }}</span>
+                        </div>
+                        <span class="text-xs text-gray-500">{{ log.created_at }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Sourcing Modal -->
+    <div id="sourcing-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">🔍 AI 소싱 시작</h2>
+            <p class="text-gray-600 mb-6">1688에서 수익성 높은 상품을 자동으로 발굴합니다</p>
+            
+            <div class="mb-4">
+                <label class="block text-gray-700 text-sm font-bold mb-2">검색 키워드</label>
+                <input 
+                    type="text" 
+                    id="sourcing-keyword" 
+                    class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="예: 무선이어폰, 스마트워치"
+                >
+            </div>
+            
+            <div class="flex gap-3">
+                <button onclick="startSourcing()" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg">
+                    시작
+                </button>
+                <button onclick="closeSourcingModal()" class="flex-1 bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-3 px-4 rounded-lg">
+                    취소
+                </button>
+            </div>
+            
+            <div id="sourcing-progress" class="hidden mt-4">
+                <div class="bg-blue-50 border-l-4 border-blue-500 p-4">
+                    <p class="text-blue-700 font-semibold">소싱 진행 중...</p>
+                    <p class="text-blue-600 text-sm mt-1">결과는 활동 로그에서 확인할 수 있습니다</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        function openSourcingModal() {
+            document.getElementById('sourcing-modal').classList.remove('hidden');
+        }
+        
+        function closeSourcingModal() {
+            document.getElementById('sourcing-modal').classList.add('hidden');
+        }
+        
+        async function startSourcing() {
+            const keyword = document.getElementById('sourcing-keyword').value;
+            if (!keyword) {
+                alert('키워드를 입력해주세요');
+                return;
+            }
+            
+            document.getElementById('sourcing-progress').classList.remove('hidden');
+            
+            try {
+                const response = await fetch('/api/sourcing/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({keyword: keyword})
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(`소싱 완료!\n스캔: ${result.total_scanned}개\n안전필터 통과: ${result.safety_passed}개\n수익성 통과: ${result.profitable}개\nTOP 선정: ${result.top_products}개`);
+                    location.reload();
+                } else {
+                    alert('소싱 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (error) {
+                alert('오류 발생: ' + error.message);
+            }
+            
+            document.getElementById('sourcing-progress').classList.add('hidden');
+        }
+        
+        // Live log streaming
+        const eventSource = new EventSource('/api/logs/stream');
+        eventSource.onmessage = function(event) {
+            const log = JSON.parse(event.data);
+            const logsContainer = document.getElementById('activity-logs');
+            
+            const logElement = document.createElement('div');
+            let borderColor = 'border-blue-500';
+            if (log.status === 'success') borderColor = 'border-green-500';
+            else if (log.status === 'error') borderColor = 'border-red-500';
+            else if (log.status === 'warning') borderColor = 'border-yellow-500';
+            
+            logElement.className = `border-l-4 ${borderColor} bg-gray-50 p-3 rounded`;
+            logElement.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="font-semibold text-gray-700">${log.action_type}</span>
+                        <span class="text-gray-600 ml-2">${log.description}</span>
+                    </div>
+                    <span class="text-xs text-gray-500">${log.created_at}</span>
+                </div>
+            `;
+            
+            logsContainer.insertBefore(logElement, logsContainer.firstChild);
+            
+            // Keep only last 20 logs
+            while (logsContainer.children.length > 20) {
+                logsContainer.removeChild(logsContainer.lastChild);
+            }
+        };
+    </script>
+</body>
+</html>

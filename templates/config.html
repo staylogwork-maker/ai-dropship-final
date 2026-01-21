@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>설정 - AI Dropshipping ERP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    {% include 'nav.html' %}
+    
+    <div class="container mx-auto px-4 py-8">
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">⚙️ 시스템 설정</h1>
+            <p class="text-gray-600">API 키, 마진율, 환율 등을 관리합니다</p>
+        </div>
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Financial Configuration -->
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">💰 수익성 설정</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">목표 마진율 (%)</label>
+                        <input 
+                            type="number" 
+                            id="target_margin_rate" 
+                            value="{{ configs.get('target_margin_rate', '30') }}"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">CNY 환율 (1위안 = ? 원)</label>
+                        <input 
+                            type="number" 
+                            id="cny_exchange_rate" 
+                            value="{{ configs.get('cny_exchange_rate', '190') }}"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">환율 버퍼 (안전마진)</label>
+                        <input 
+                            type="number" 
+                            step="0.01"
+                            id="exchange_rate_buffer" 
+                            value="{{ configs.get('exchange_rate_buffer', '1.05') }}"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                        <p class="text-xs text-gray-500 mt-1">예: 1.05 = 환율 5% 여유</p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">기본 배송비 (원)</label>
+                        <input 
+                            type="number" 
+                            id="shipping_cost_base" 
+                            value="{{ configs.get('shipping_cost_base', '5000') }}"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">관부가세율 (0.10 = 10%)</label>
+                        <input 
+                            type="number" 
+                            step="0.01"
+                            id="customs_tax_rate" 
+                            value="{{ configs.get('customs_tax_rate', '0.10') }}"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">네이버 수수료율 (0.06 = 6%)</label>
+                        <input 
+                            type="number" 
+                            step="0.01"
+                            id="naver_fee_rate" 
+                            value="{{ configs.get('naver_fee_rate', '0.06') }}"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">쿠팡 수수료율 (0.11 = 11%)</label>
+                        <input 
+                            type="number" 
+                            step="0.01"
+                            id="coupang_fee_rate" 
+                            value="{{ configs.get('coupang_fee_rate', '0.11') }}"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                    </div>
+                </div>
+            </div>
+            
+            <!-- API Configuration -->
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">🔑 API 설정</h2>
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">ScrapingAnt API Key</label>
+                        <input 
+                            type="password" 
+                            id="scrapingant_api_key" 
+                            value="{{ configs.get('scrapingant_api_key', '') }}"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="1688 스크래핑용"
+                        >
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">OpenAI API Key</label>
+                        <input 
+                            type="password" 
+                            id="openai_api_key" 
+                            value="{{ configs.get('openai_api_key', '') }}"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="GPT-4 콘텐츠 생성용"
+                        >
+                    </div>
+                    
+                    <div class="border-t pt-4 mt-4">
+                        <h3 class="font-bold text-gray-700 mb-2">네이버 커머스 API</h3>
+                        
+                        <div class="mb-3">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Client ID</label>
+                            <input 
+                                type="text" 
+                                id="naver_client_id" 
+                                value="{{ configs.get('naver_client_id', '') }}"
+                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Client Secret</label>
+                            <input 
+                                type="password" 
+                                id="naver_client_secret" 
+                                value="{{ configs.get('naver_client_secret', '') }}"
+                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                        </div>
+                    </div>
+                    
+                    <div class="border-t pt-4 mt-4">
+                        <h3 class="font-bold text-gray-700 mb-2">쿠팡 API</h3>
+                        
+                        <div class="mb-3">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Access Key</label>
+                            <input 
+                                type="text" 
+                                id="coupang_access_key" 
+                                value="{{ configs.get('coupang_access_key', '') }}"
+                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="block text-gray-700 text-sm font-bold mb-2">Secret Key</label>
+                            <input 
+                                type="password" 
+                                id="coupang_secret_key" 
+                                value="{{ configs.get('coupang_secret_key', '') }}"
+                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 text-sm font-bold mb-2">서버 고정 IP (화이트리스트용)</label>
+                            <input 
+                                type="text" 
+                                id="server_static_ip" 
+                                value="{{ configs.get('server_static_ip', '') }}"
+                                class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                placeholder="예: 123.456.789.012"
+                            >
+                            <p class="text-xs text-red-500 mt-1">⚠️ 쿠팡 API는 IP 화이트리스팅 필수</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Save Button -->
+        <div class="mt-8 text-center">
+            <button onclick="saveConfig()" class="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold py-3 px-8 rounded-lg transition duration-200">
+                💾 설정 저장
+            </button>
+        </div>
+        
+        <!-- Info Panel -->
+        <div class="mt-8 bg-blue-50 border-l-4 border-blue-500 p-4">
+            <div class="flex">
+                <div class="flex-shrink-0">
+                    <span class="text-2xl">ℹ️</span>
+                </div>
+                <div class="ml-3">
+                    <h3 class="text-sm font-medium text-blue-800">설정 변경 안내</h3>
+                    <div class="mt-2 text-sm text-blue-700">
+                        <ul class="list-disc list-inside space-y-1">
+                            <li>모든 설정은 즉시 적용됩니다 (서버 재시작 불필요)</li>
+                            <li>환율은 주문 발생 시점에 고정되어 세무 자료에 저장됩니다</li>
+                            <li>API 키는 암호화되어 저장되지 않으므로 안전하게 관리하세요</li>
+                            <li>네이버 API는 bcrypt 기반 동적 서명을 사용합니다</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        async function saveConfig() {
+            const configData = {
+                target_margin_rate: document.getElementById('target_margin_rate').value,
+                cny_exchange_rate: document.getElementById('cny_exchange_rate').value,
+                exchange_rate_buffer: document.getElementById('exchange_rate_buffer').value,
+                shipping_cost_base: document.getElementById('shipping_cost_base').value,
+                customs_tax_rate: document.getElementById('customs_tax_rate').value,
+                naver_fee_rate: document.getElementById('naver_fee_rate').value,
+                coupang_fee_rate: document.getElementById('coupang_fee_rate').value,
+                scrapingant_api_key: document.getElementById('scrapingant_api_key').value,
+                openai_api_key: document.getElementById('openai_api_key').value,
+                naver_client_id: document.getElementById('naver_client_id').value,
+                naver_client_secret: document.getElementById('naver_client_secret').value,
+                coupang_access_key: document.getElementById('coupang_access_key').value,
+                coupang_secret_key: document.getElementById('coupang_secret_key').value,
+                server_static_ip: document.getElementById('server_static_ip').value
+            };
+            
+            try {
+                const response = await fetch('/api/config/update', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(configData)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ 설정이 저장되었습니다!');
+                    location.reload();
+                } else {
+                    alert('❌ 저장 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (error) {
+                alert('❌ 오류: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

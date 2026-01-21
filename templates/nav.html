@@ -1,0 +1,30 @@
+<nav class="bg-gradient-to-r from-blue-600 to-indigo-700 shadow-lg">
+    <div class="container mx-auto px-4">
+        <div class="flex items-center justify-between h-16">
+            <div class="flex items-center">
+                <a href="{{ url_for('dashboard') }}" class="text-white text-xl font-bold flex items-center">
+                    <span class="mr-2">🚀</span>
+                    AI Dropshipping ERP
+                </a>
+            </div>
+            
+            <div class="flex items-center space-x-4">
+                <a href="{{ url_for('dashboard') }}" class="text-white hover:bg-blue-700 px-3 py-2 rounded-md text-sm font-medium transition">
+                    📊 대시보드
+                </a>
+                <a href="{{ url_for('products') }}" class="text-white hover:bg-blue-700 px-3 py-2 rounded-md text-sm font-medium transition">
+                    📦 상품
+                </a>
+                <a href="{{ url_for('orders') }}" class="text-white hover:bg-blue-700 px-3 py-2 rounded-md text-sm font-medium transition">
+                    📋 주문
+                </a>
+                <a href="{{ url_for('config_page') }}" class="text-white hover:bg-blue-700 px-3 py-2 rounded-md text-sm font-medium transition">
+                    ⚙️ 설정
+                </a>
+                <a href="{{ url_for('logout') }}" class="text-white hover:bg-red-600 px-3 py-2 rounded-md text-sm font-medium transition">
+                    🚪 로그아웃
+                </a>
+            </div>
+        </div>
+    </div>
+</nav>
