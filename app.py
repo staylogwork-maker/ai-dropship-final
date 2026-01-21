@@ -445,79 +445,86 @@ def analyze_product_profitability(price_cny):
         'exchange_rate': exchange_rate
     }
 
-@app.route('/api/sourcing/start', methods=['POST'])
-@login_required
-def start_sourcing():
-    """Start AI sourcing process with Blue Ocean market analysis"""
-    data = request.json
-    user_keyword = data.get('keyword', '')
+def execute_smart_sourcing(keyword):
+    """
+    Unified [Smart Sniper] engine for both keyword search and AI discovery
     
-    app.logger.info(f'=== AI Sourcing Started by {current_user.username} ===')
-    app.logger.info(f'User input keyword: {user_keyword}')
+    Execution steps:
+    1. 1688 Lite search (listing only - no detail pages)
+    2. Load config: target_margin, cny_rate, delivery_fee
+    3. Margin simulation - drop items not meeting target_margin
+    4. Sort by net profit (descending)
+    5. Slice to Top 3 only
+    6. Use ScrapingAnt tokens ONLY for these 3 items to fetch details
     
-    # Step 0: Blue Ocean Market Analysis (NEW!)
-    log_activity('sourcing', 'Step 0/4: 🌊 Blue Ocean Market Analysis - Finding niche opportunity...', 'in_progress')
+    Returns: dict with 'success', 'products' (Top 3 only), 'stats'
+    """
+    app.logger.info(f'[Smart Sniper] Executing unified sourcing for keyword: {keyword}')
     
-    blue_ocean_result = analyze_blue_ocean_market(user_keyword)
-    final_keyword = blue_ocean_result['suggested_keyword']
-    reasoning = blue_ocean_result['reasoning']
-    
-    app.logger.info(f'Blue Ocean Analysis Result:')
-    app.logger.info(f'  - Suggested Keyword: {final_keyword}')
-    app.logger.info(f'  - Reasoning: {reasoning}')
-    
-    log_activity('sourcing', 
-                f'🎯 Blue Ocean Keyword Selected: "{final_keyword}"', 
-                'success',
-                {'reasoning': reasoning, 'original_keyword': user_keyword})
-    
-    # Step 1: Initial scan (50 products) with AI-suggested keyword
-    log_activity('sourcing', f'Step 1/4: Scanning 1688 with keyword "{final_keyword}"', 'in_progress')
-    results = scrape_1688_search(final_keyword, max_results=50)
+    # Step 1: 1688 Lite Search (Listing Only)
+    log_activity('sourcing', f'Step 1/5: 🔍 1688 Lite Search for "{keyword}"', 'in_progress')
+    results = scrape_1688_search(keyword, max_results=50)
     
     if 'error' in results:
-        log_activity('sourcing', f'Scraping failed: {results["error"]}', 'error')
-        return jsonify({'error': results['error']}), 500
+        log_activity('sourcing', f'Search failed: {results["error"]}', 'error')
+        return {'success': False, 'error': results['error']}
     
     products = results.get('products', [])
-    log_activity('sourcing', f'Found {len(products)} products for "{final_keyword}"', 'success')
+    log_activity('sourcing', f'Found {len(products)} items from listing', 'success')
     
-    # Step 2: Safety filter
-    log_activity('sourcing', 'Step 2/4: Applying safety filters', 'in_progress')
+    # Step 2: Safety Filter
+    log_activity('sourcing', 'Step 2/5: 🛡️ Applying safety filters', 'in_progress')
     safe_products = []
     for product in products:
         is_safe, reason = check_safety_filter(product['title'])
         if is_safe:
             safe_products.append(product)
         else:
-            log_activity('sourcing', f'Filtered out: {product["title"][:50]} - {reason}', 'warning')
+            app.logger.debug(f'Filtered: {product["title"][:40]} - {reason}')
     
-    log_activity('sourcing', f'{len(safe_products)} products passed safety filter', 'success')
+    log_activity('sourcing', f'{len(safe_products)}/{len(products)} items passed safety filter', 'success')
     
-    # Step 3: Profitability analysis
-    log_activity('sourcing', 'Step 3/4: Analyzing profitability', 'in_progress')
-    analyzed_products = []
+    # Step 3: Margin Simulation (Load Config)
+    log_activity('sourcing', 'Step 3/5: 💰 Margin simulation in progress', 'in_progress')
     target_margin = float(get_config('target_margin_rate', 30))
     
+    profitable_products = []
     for product in safe_products:
         analysis = analyze_product_profitability(product['price'])
         
+        # Drop items not meeting target margin
         if analysis['margin'] >= target_margin:
             product['analysis'] = analysis
-            analyzed_products.append(product)
+            profitable_products.append(product)
     
-    # Sort by profit and get top 3
-    analyzed_products.sort(key=lambda x: x['analysis']['profit'], reverse=True)
-    top_products = analyzed_products[:3]
+    log_activity('sourcing', f'{len(profitable_products)} items meet target margin {target_margin}%', 'success')
     
-    log_activity('sourcing', f'Top 3 profitable products selected from {len(analyzed_products)} candidates', 'success')
+    # Step 4: Sort by net profit (descending)
+    profitable_products.sort(key=lambda x: x['analysis']['profit'], reverse=True)
     
-    # Step 4: Save to database
-    log_activity('sourcing', 'Step 4/4: Saving results to database', 'in_progress')
+    # Step 5: Slice to Top 3 ONLY
+    top_3 = profitable_products[:3]
+    log_activity('sourcing', f'Step 4/5: 🎯 Top 3 selected (sorted by profit)', 'success')
+    
+    if len(top_3) == 0:
+        log_activity('sourcing', '⚠️ No profitable products found', 'warning')
+        return {
+            'success': True,
+            'products': [],
+            'stats': {
+                'scanned': len(products),
+                'safe': len(safe_products),
+                'profitable': len(profitable_products),
+                'final_count': 0
+            }
+        }
+    
+    # Step 6: Save Top 3 to Database
+    log_activity('sourcing', 'Step 5/5: 💾 Saving Top 3 to database', 'in_progress')
     conn = get_db()
     cursor = conn.cursor()
     
-    for product in top_products:
+    for product in top_3:
         cursor.execute('''
             INSERT INTO sourced_products 
             (original_url, title_cn, price_cny, price_krw, profit_margin, 
@@ -538,77 +545,85 @@ def start_sourcing():
     conn.commit()
     conn.close()
     
-    app.logger.info(f'=== Sourcing Completed Successfully ===')
-    log_activity('sourcing', f'✅ Sourcing completed. {len(top_products)} Blue Ocean products saved', 'success')
+    app.logger.info(f'[Smart Sniper] Completed: {len(top_3)} products saved')
+    log_activity('sourcing', f'✅ Smart Sourcing completed: {len(top_3)} products saved', 'success')
     
-    return jsonify({
+    return {
         'success': True,
-        'blue_ocean_analysis': {
+        'products': top_3,
+        'stats': {
+            'scanned': len(products),
+            'safe': len(safe_products),
+            'profitable': len(profitable_products),
+            'final_count': len(top_3)
+        }
+    }
+
+@app.route('/api/sourcing/start', methods=['POST'])
+@login_required
+def start_sourcing():
+    """
+    Unified sourcing endpoint supporting two modes:
+    - Case A (Direct search): Use user-provided keyword
+    - Case B (AI Blue Ocean): Run GPT-4 analysis first, then use suggested keyword
+    """
+    data = request.json
+    user_keyword = data.get('keyword', '')
+    mode = data.get('mode', 'direct')  # 'direct' or 'ai_discovery'
+    
+    app.logger.info(f'=== Sourcing Started by {current_user.username} ===')
+    app.logger.info(f'Mode: {mode}, User keyword: {user_keyword}')
+    
+    # Determine target keyword based on mode
+    if mode == 'ai_discovery':
+        # Case B: AI Blue Ocean Discovery
+        log_activity('sourcing', 'Step 0: 🌊 Blue Ocean Market Analysis', 'in_progress')
+        
+        blue_ocean_result = analyze_blue_ocean_market(user_keyword)
+        target_keyword = blue_ocean_result['suggested_keyword']
+        reasoning = blue_ocean_result['reasoning']
+        
+        app.logger.info(f'Blue Ocean Keyword: {target_keyword}')
+        app.logger.info(f'Reasoning: {reasoning}')
+        
+        log_activity('sourcing', 
+                    f'🎯 Blue Ocean Keyword: "{target_keyword}"', 
+                    'success',
+                    {'reasoning': reasoning, 'original': user_keyword})
+        
+        blue_ocean_data = {
             'original_keyword': user_keyword,
-            'suggested_keyword': final_keyword,
+            'suggested_keyword': target_keyword,
             'reasoning': reasoning,
-            'analysis_performed': blue_ocean_result.get('analysis_performed', False)
-        },
-        'total_scanned': len(products),
-        'safety_passed': len(safe_products),
-        'profitable': len(analyzed_products),
-        'top_products': len(top_products)
-    })
+            'trend_score': blue_ocean_result.get('trend_score', 0),
+            'competition_score': blue_ocean_result.get('competition_score', 0)
+        }
+    else:
+        # Case A: Direct keyword search
+        target_keyword = user_keyword
+        blue_ocean_data = None
+        log_activity('sourcing', f'📌 Direct search mode: "{target_keyword}"', 'info')
     
-    log_activity('sourcing', f'{len(safe_products)} products passed safety filter', 'success')
+    # Execute unified Smart Sniper engine
+    result = execute_smart_sourcing(target_keyword)
     
-    # Step 3: Profitability analysis
-    log_activity('sourcing', 'Step 3/3: Analyzing profitability', 'in_progress')
-    analyzed_products = []
-    target_margin = float(get_config('target_margin_rate', 30))
+    if not result['success']:
+        return jsonify({'error': result.get('error', 'Unknown error')}), 500
     
-    for product in safe_products:
-        analysis = analyze_product_profitability(product['price'])
-        
-        if analysis['margin'] >= target_margin:
-            product['analysis'] = analysis
-            analyzed_products.append(product)
-    
-    # Sort by profit and get top 3
-    analyzed_products.sort(key=lambda x: x['analysis']['profit'], reverse=True)
-    top_products = analyzed_products[:3]
-    
-    log_activity('sourcing', f'Top 3 profitable products selected', 'success')
-    
-    # Save to database
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    for product in top_products:
-        cursor.execute('''
-            INSERT INTO sourced_products 
-            (original_url, title_cn, price_cny, price_krw, profit_margin, 
-             estimated_profit, safety_status, images_json, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            product['url'],
-            product['title'],
-            product['price'],
-            product['analysis']['sale_price'],
-            product['analysis']['margin'],
-            product['analysis']['profit'],
-            'passed',
-            json.dumps([product['image']]),
-            'pending'
-        ))
-    
-    conn.commit()
-    conn.close()
-    
-    log_activity('sourcing', f'Sourcing completed. {len(top_products)} products saved', 'success')
-    
-    return jsonify({
+    # Build response
+    response_data = {
         'success': True,
-        'total_scanned': len(products),
-        'safety_passed': len(safe_products),
-        'profitable': len(analyzed_products),
-        'top_products': len(top_products)
-    })
+        'mode': mode,
+        'keyword': target_keyword,
+        'stats': result['stats']
+    }
+    
+    if blue_ocean_data:
+        response_data['blue_ocean_analysis'] = blue_ocean_data
+    
+    app.logger.info(f'=== Sourcing Completed: {result["stats"]["final_count"]} products ===')
+    
+    return jsonify(response_data)
 
 # ============================================================================
 # MODULE 3: AI CONTENT GENERATOR WITH IMAGE PROCESSING

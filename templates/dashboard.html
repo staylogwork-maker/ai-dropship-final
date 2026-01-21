@@ -195,16 +195,20 @@
     <!-- Sourcing Modal -->
     <div id="sourcing-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div class="bg-white rounded-lg shadow-2xl p-8 max-w-md w-full">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">🌊 Blue Ocean AI 소싱</h2>
-            <p class="text-gray-600 mb-4">AI가 경쟁이 낮고 수요가 높은 <span class="font-bold text-blue-600">'블루오션'</span> 키워드를 찾아드립니다!</p>
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">🎯 Smart Sniper 소싱</h2>
+            <p class="text-gray-600 mb-4">두 가지 모드로 최고의 상품을 발굴하세요!</p>
             
-            <div class="bg-blue-50 border-l-4 border-blue-500 p-3 mb-4 text-sm">
-                <p class="text-blue-800 font-semibold">✨ AI 분석 기능:</p>
-                <ul class="text-blue-700 mt-1 space-y-1 ml-4">
-                    <li>• 계절/트렌드 기반 시장 분석</li>
-                    <li>• 대기업 미진입 틈새시장 발굴</li>
-                    <li>• 구체적인 롱테일 키워드 추천</li>
+            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-3 mb-4 text-sm">
+                <p class="text-blue-800 font-semibold">✨ 통합 Smart Sniper 엔진:</p>
+                <ul class="text-blue-700 mt-2 space-y-1 ml-4">
+                    <li>🔍 <strong>모드 1: 키워드 직접 검색</strong>
+                        <span class="text-xs block ml-5 text-blue-600">→ 원하는 키워드 입력 시</span>
+                    </li>
+                    <li>🌊 <strong>모드 2: AI Blue Ocean 발굴</strong>
+                        <span class="text-xs block ml-5 text-blue-600">→ 키워드 비워두면 AI가 블루오션 추천</span>
+                    </li>
                 </ul>
+                <p class="text-xs text-blue-600 mt-2 ml-4">• 1688 라이트검색 → 마진 시뮬레이션 → Top 3만 상세 수집</p>
             </div>
             
             <div class="mb-4">
@@ -217,7 +221,7 @@
                     class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="예: 무선이어폰 (비워두면 AI가 자동 추천)"
                 >
-                <p class="text-xs text-gray-500 mt-1">💡 키워드를 입력하거나, 비워두면 AI가 최적의 블루오션 키워드를 찾아드립니다</p>
+                <p class="text-xs text-gray-500 mt-1">💡 입력 → 직접 검색 | 공백 → AI 블루오션 발굴</p>
             </div>
             
             <div class="flex gap-3">
@@ -230,9 +234,9 @@
             </div>
             
             <div id="sourcing-progress" class="hidden mt-4">
-                <div class="bg-blue-50 border-l-4 border-blue-500 p-4">
-                    <p class="text-blue-700 font-semibold">🌊 Blue Ocean 분석 중...</p>
-                    <p class="text-blue-600 text-sm mt-1">AI가 시장을 분석하고 최적의 상품을 찾고 있습니다</p>
+                <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-blue-500 p-4">
+                    <p class="text-blue-700 font-semibold">🎯 Smart Sniper 실행 중...</p>
+                    <p class="text-blue-600 text-sm mt-1">라이트검색 → 마진필터 → Top 3 선정</p>
                 </div>
             </div>
         </div>
@@ -340,13 +344,10 @@
         }
         
         async function startSourcing() {
-            const keyword = document.getElementById('sourcing-keyword').value;
+            const keyword = document.getElementById('sourcing-keyword').value.trim();
             
-            // Allow empty keyword for AI to suggest
-            // if (!keyword) {
-            //     alert('키워드를 입력해주세요');
-            //     return;
-            // }
+            // Determine mode: direct search or AI discovery
+            const mode = keyword ? 'direct' : 'ai_discovery';
             
             document.getElementById('sourcing-progress').classList.remove('hidden');
             
@@ -354,31 +355,34 @@
                 const response = await fetch('/api/sourcing/start', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({keyword: keyword || ''})
+                    body: JSON.stringify({
+                        keyword: keyword,
+                        mode: mode
+                    })
                 });
                 
                 const result = await response.json();
                 
                 if (result.success) {
-                    const blueOcean = result.blue_ocean_analysis;
+                    let message = '✅ [Smart Sniper] 소싱 완료!\n\n';
                     
-                    let message = '🌊 Blue Ocean 소싱 완료!\n\n';
-                    
-                    if (blueOcean.analysis_performed) {
-                        message += '📊 AI 시장 분석 결과:\n';
-                        message += `입력: "${blueOcean.original_keyword || '(없음)'}"\n`;
-                        message += `→ AI 추천: "${blueOcean.suggested_keyword}"\n\n`;
-                        message += `💡 선정 이유:\n${blueOcean.reasoning}\n\n`;
+                    if (result.mode === 'ai_discovery' && result.blue_ocean_analysis) {
+                        const bo = result.blue_ocean_analysis;
+                        message += '🌊 Blue Ocean AI 분석:\n';
+                        message += `입력: "${bo.original_keyword || '(없음)'}"\n`;
+                        message += `→ AI 추천: "${bo.suggested_keyword}"\n\n`;
+                        message += `💡 선정 이유:\n${bo.reasoning}\n\n`;
                     } else {
-                        message += `검색 키워드: "${blueOcean.suggested_keyword}"\n\n`;
+                        message += `🔍 검색 키워드: "${result.keyword}"\n\n`;
                     }
                     
-                    message += `📈 분석 결과:\n`;
-                    message += `- 스캔: ${result.total_scanned}개\n`;
-                    message += `- 안전필터 통과: ${result.safety_passed}개\n`;
-                    message += `- 수익성 통과: ${result.profitable}개\n`;
-                    message += `- ⭐ TOP 선정: ${result.top_products}개\n\n`;
-                    message += '상품 관리 페이지에서 확인하세요!';
+                    const stats = result.stats;
+                    message += `📊 실행 결과:\n`;
+                    message += `- 1688 스캔: ${stats.scanned}개\n`;
+                    message += `- 안전필터 통과: ${stats.safe}개\n`;
+                    message += `- 마진 기준 통과: ${stats.profitable}개\n`;
+                    message += `- ⭐ Top 3 선정: ${stats.final_count}개\n\n`;
+                    message += '💾 상품 관리 페이지에서 확인하세요!';
                     
                     alert(message);
                     location.reload();
