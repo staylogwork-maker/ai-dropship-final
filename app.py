@@ -294,7 +294,7 @@ JSON 형식으로만 응답하세요:
 }}"""
 
     try:
-        app.logger.info('Calling GPT-4 for Blue Ocean market analysis...')
+        app.logger.info('Calling gpt-4o-mini for Blue Ocean market analysis...')
         
         response = requests.post(
             'https://api.openai.com/v1/chat/completions',
@@ -303,7 +303,7 @@ JSON 형식으로만 응답하세요:
                 'Content-Type': 'application/json'
             },
             json={
-                'model': 'gpt-4',
+                'model': 'gpt-4o-mini',
                 'messages': [
                     {
                         'role': 'system',
@@ -656,7 +656,7 @@ def generate_marketing_copy(title, price):
                 'Content-Type': 'application/json'
             },
             json={
-                'model': 'gpt-4',
+                'model': 'gpt-4o-mini',
                 'messages': [
                     {'role': 'system', 'content': '당신은 전문 카피라이터입니다.'},
                     {'role': 'user', 'content': prompt}
