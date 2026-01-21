@@ -23,9 +23,57 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 import schedule
 import threading
+import logging
+from logging.handlers import RotatingFileHandler
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
+
+# Create logs directory if it doesn't exist
+if not os.path.exists('logs'):
+    os.makedirs('logs')
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# File handler with rotation (max 10MB, keep 5 backup files)
+file_handler = RotatingFileHandler(
+    'logs/server.log',
+    maxBytes=10 * 1024 * 1024,  # 10MB
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.INFO)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+))
+
+# Console handler
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+))
+
+# Add handlers to app logger
+app.logger.addHandler(file_handler)
+app.logger.addHandler(console_handler)
+app.logger.setLevel(logging.INFO)
+
+# Log startup
+app.logger.info('=' * 70)
+app.logger.info('AI Dropshipping ERP System v2.0 - Starting Up')
+app.logger.info('=' * 70)
 
 # Flask-Login setup
 login_manager = LoginManager()
@@ -1213,6 +1261,31 @@ def config_page():
     conn.close()
     
     return render_template('config.html', configs=configs)
+
+@app.route('/logs')
+@login_required
+def logs_page():
+    """System logs viewer page"""
+    app.logger.info(f'User {current_user.username} accessed system logs')
+    
+    log_file_path = 'logs/server.log'
+    log_lines = []
+    
+    try:
+        if os.path.exists(log_file_path):
+            with open(log_file_path, 'r', encoding='utf-8') as f:
+                # Read all lines and get last 100
+                all_lines = f.readlines()
+                log_lines = all_lines[-100:] if len(all_lines) > 100 else all_lines
+                # Reverse to show newest first
+                log_lines.reverse()
+        else:
+            log_lines = ['[INFO] Log file not found. Server just started or no logs generated yet.']
+    except Exception as e:
+        log_lines = [f'[ERROR] Failed to read log file: {str(e)}']
+        app.logger.error(f'Failed to read log file: {str(e)}')
+    
+    return render_template('logs.html', log_lines=log_lines)
 
 @app.route('/api/config/update', methods=['POST'])
 @login_required

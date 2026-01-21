@@ -52,7 +52,8 @@ dropship.db.backup
 
 # Logs
 *.log
-logs/
+logs/*.log
+logs/*.log.*
 
 # Static Files (Generated)
 static/processed_images/*
