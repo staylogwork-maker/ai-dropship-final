@@ -294,6 +294,7 @@ JSON 형식으로만 응답하세요:
 }}"""
 
     try:
+        # CRITICAL: Using gpt-4o-mini to avoid 404 errors (gpt-4 requires special access)
         app.logger.info('Calling gpt-4o-mini for Blue Ocean market analysis...')
         
         response = requests.post(
@@ -303,7 +304,7 @@ JSON 형식으로만 응답하세요:
                 'Content-Type': 'application/json'
             },
             json={
-                'model': 'gpt-4o-mini',
+                'model': 'gpt-4o-mini',  # FORCED: Must use gpt-4o-mini (universal access)
                 'messages': [
                     {
                         'role': 'system',
@@ -649,6 +650,7 @@ def generate_marketing_copy(title, price):
 """
     
     try:
+        # CRITICAL: Using gpt-4o-mini (universal access, no 404 errors)
         response = requests.post(
             'https://api.openai.com/v1/chat/completions',
             headers={
@@ -656,7 +658,7 @@ def generate_marketing_copy(title, price):
                 'Content-Type': 'application/json'
             },
             json={
-                'model': 'gpt-4o-mini',
+                'model': 'gpt-4o-mini',  # FORCED: Must use gpt-4o-mini
                 'messages': [
                     {'role': 'system', 'content': '당신은 전문 카피라이터입니다.'},
                     {'role': 'user', 'content': prompt}
