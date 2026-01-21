@@ -353,13 +353,23 @@ def log_activity(action_type, description, status='success', details=None):
     conn.close()
 
 def get_config(key, default=None):
-    """Get configuration value"""
+    """Get configuration value with defensive handling"""
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('SELECT value FROM config WHERE key = ?', (key,))
     row = cursor.fetchone()
     conn.close()
-    return row['value'] if row else default
+    
+    if row:
+        value = row['value']
+        # Strip whitespace from string values
+        if isinstance(value, str):
+            value = value.strip()
+        # Return None for empty strings (treat as not configured)
+        if value == '':
+            return default
+        return value
+    return default
 
 def set_config(key, value):
     """Set configuration value"""
@@ -443,15 +453,30 @@ BANNED_KEYWORDS = {
 
 def analyze_blue_ocean_market(user_keyword=''):
     """
-    Advanced Blue Ocean Market Analysis using GPT-4
+    Advanced Blue Ocean Market Analysis using GPT-4o-mini
     Finds niche opportunities with rising demand and low competition
     """
     api_key = get_config('openai_api_key')
+    
+    # Defensive: Check API key validity
     if not api_key:
-        app.logger.warning('OpenAI API key not configured, using user keyword directly')
+        app.logger.warning('⚠️ OpenAI API key not configured in database')
         return {
             'suggested_keyword': user_keyword if user_keyword else '무선이어폰',
             'reasoning': 'OpenAI API key not configured. Using provided keyword.',
+            'analysis_performed': False
+        }
+    
+    # Log API key prefix for debugging (first 7 chars only for security)
+    api_key_preview = api_key[:7] + '...' if len(api_key) > 7 else 'TOO_SHORT'
+    app.logger.info(f'🔑 Using OpenAI API key: {api_key_preview} (length: {len(api_key)})')
+    
+    # Validate API key format
+    if not api_key.startswith('sk-'):
+        app.logger.error(f'❌ Invalid OpenAI API key format (does not start with sk-): {api_key_preview}')
+        return {
+            'suggested_keyword': user_keyword if user_keyword else '무선이어폰',
+            'reasoning': 'Invalid OpenAI API key format. Please check your configuration.',
             'analysis_performed': False
         }
     
@@ -470,6 +495,7 @@ def analyze_blue_ocean_market(user_keyword=''):
         season = '겨울 (Winter)'
     
     # Advanced Blue Ocean Analysis Prompt
+    # CRITICAL: Must explicitly ask for JSON format to avoid 400 errors with json_object mode
     prompt = f"""당신은 대한민국 E-커머스의 수석 MD이자 데이터 분석 전문가입니다.
 
 【현재 상황】
@@ -496,8 +522,8 @@ def analyze_blue_ocean_market(user_keyword=''):
    - 구체적이고 니치한 키워드(예: '무선 무드등 탁상용 가습기')
    - 1688에서 검색 가능한 구체적인 상품명
 
-【출력 형식】
-JSON 형식으로만 응답하세요:
+**중요: 반드시 아래 JSON 형식으로만 답변하세요. 다른 텍스트는 포함하지 마세요:**
+
 {{
   "keyword": "정밀한 블루오션 키워드 (한국어)",
   "reasoning": "이 키워드를 선정한 이유를 1~2문장으로 설명",
@@ -514,8 +540,8 @@ JSON 형식으로만 응답하세요:
 }}"""
 
     try:
-        # CRITICAL: Using gpt-4o-mini to avoid 404 errors (gpt-4 requires special access)
-        app.logger.info('Calling gpt-4o-mini for Blue Ocean market analysis...')
+        # Log request details
+        app.logger.info(f'📡 Calling OpenAI API: model=gpt-4o-mini, max_tokens=500, temperature=0.8')
         
         response = requests.post(
             'https://api.openai.com/v1/chat/completions',
@@ -528,7 +554,7 @@ JSON 형식으로만 응답하세요:
                 'messages': [
                     {
                         'role': 'system',
-                        'content': '당신은 한국 E-커머스 시장의 전문 MD이자 트렌드 분석가입니다. 블루오션 시장을 발굴하는 전문가입니다.'
+                        'content': '당신은 한국 E-커머스 시장의 전문 MD이자 트렌드 분석가입니다. 블루오션 시장을 발굴하는 전문가입니다. 반드시 JSON 형식으로만 응답하세요.'
                     },
                     {
                         'role': 'user',
@@ -537,38 +563,75 @@ JSON 형식으로만 응답하세요:
                 ],
                 'temperature': 0.8,
                 'max_tokens': 500,
-                'response_format': {'type': 'json_object'}
+                'response_format': {'type': 'json_object'}  # JSON mode enabled
             },
             timeout=30
         )
+        
+        # Log response status
+        app.logger.info(f'📥 OpenAI API Response: status_code={response.status_code}')
         
         if response.status_code == 200:
             result = response.json()
             content = result['choices'][0]['message']['content']
             
+            app.logger.info(f'✅ Received response from OpenAI (length: {len(content)} chars)')
+            
             # Parse JSON response
             import json
-            analysis = json.loads(content)
-            
-            app.logger.info(f'Blue Ocean Analysis Result: {analysis.get("keyword")}')
-            
-            return {
-                'suggested_keyword': analysis.get('keyword', user_keyword or '무선이어폰'),
-                'reasoning': analysis.get('reasoning', 'AI 분석 완료'),
-                'trend_score': analysis.get('trend_score', 0),
-                'competition_score': analysis.get('competition_score', 0),
-                'analysis_performed': True
-            }
+            try:
+                analysis = json.loads(content)
+                app.logger.info(f'🎯 Blue Ocean Keyword: {analysis.get("keyword")}')
+                
+                return {
+                    'suggested_keyword': analysis.get('keyword', user_keyword or '무선이어폰'),
+                    'reasoning': analysis.get('reasoning', 'AI 분석 완료'),
+                    'trend_score': analysis.get('trend_score', 0),
+                    'competition_score': analysis.get('competition_score', 0),
+                    'analysis_performed': True
+                }
+            except json.JSONDecodeError as je:
+                app.logger.error(f'❌ JSON parsing failed: {je}')
+                app.logger.error(f'Raw content: {content[:200]}...')
+                return {
+                    'suggested_keyword': user_keyword if user_keyword else '무선이어폰',
+                    'reasoning': f'AI 응답 파싱 실패: {str(je)}',
+                    'analysis_performed': False
+                }
         else:
-            app.logger.error(f'GPT-4 API error: {response.status_code}')
+            # Enhanced error logging for non-200 responses
+            try:
+                error_body = response.json()
+                error_message = error_body.get('error', {}).get('message', 'No error message')
+                error_type = error_body.get('error', {}).get('type', 'unknown')
+                app.logger.error(f'❌ OpenAI API error {response.status_code}: {error_type} - {error_message}')
+                app.logger.error(f'Full error body: {error_body}')
+            except:
+                app.logger.error(f'❌ OpenAI API error {response.status_code}: {response.text[:300]}')
+            
             return {
                 'suggested_keyword': user_keyword if user_keyword else '무선이어폰',
                 'reasoning': f'AI 분석 실패 (API 오류: {response.status_code})',
                 'analysis_performed': False
             }
     
+    except requests.exceptions.Timeout:
+        app.logger.error('❌ OpenAI API timeout (30s)')
+        return {
+            'suggested_keyword': user_keyword if user_keyword else '무선이어폰',
+            'reasoning': 'AI 분석 시간 초과 (30초)',
+            'analysis_performed': False
+        }
+    except requests.exceptions.RequestException as re:
+        app.logger.error(f'❌ Network error: {str(re)}')
+        return {
+            'suggested_keyword': user_keyword if user_keyword else '무선이어폰',
+            'reasoning': f'네트워크 오류: {str(re)}',
+            'analysis_performed': False
+        }
     except Exception as e:
-        app.logger.error(f'Blue Ocean analysis failed: {str(e)}')
+        app.logger.error(f'❌ Unexpected error in Blue Ocean analysis: {str(e)}')
+        app.logger.exception(e)  # This will log full traceback
         return {
             'suggested_keyword': user_keyword if user_keyword else '무선이어폰',
             'reasoning': f'AI 분석 실패: {str(e)}',
