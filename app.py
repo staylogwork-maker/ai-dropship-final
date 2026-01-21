@@ -256,9 +256,40 @@ def auto_init_database():
             raise
     else:
         print(f'[DB-INIT] ✅ Database OK: {DB_PATH}')
+    
+    # CRITICAL: Verify tables exist before proceeding
+    print('[DB-VERIFY] Verifying all tables exist...')
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        tables = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        
+        required_tables = ['users', 'config', 'sourced_products', 'orders', 
+                          'activity_logs', 'tax_records', 'marketplace_listings', 'stock_monitor_log']
+        missing_tables = [t for t in required_tables if t not in tables]
+        
+        if missing_tables:
+            print(f'[DB-VERIFY] ❌ ERROR: Missing tables: {missing_tables}')
+            print(f'[DB-VERIFY] Found tables: {tables}')
+            raise Exception(f'Database verification failed! Missing tables: {missing_tables}')
+        else:
+            print(f'[DB-VERIFY] ✅ All {len(required_tables)} required tables exist!')
+            print(f'[DB-VERIFY] Tables: {", ".join(tables)}')
+    except Exception as e:
+        print(f'[DB-VERIFY] ❌ Verification failed: {e}')
+        raise
+    
+    # Always print completion marker
+    print('='*70)
+    print('!!! DATABASE INITIALIZATION COMPLETE !!!')
+    print('='*70)
 
-# RUN DATABASE INITIALIZATION IMMEDIATELY
+# RUN DATABASE INITIALIZATION IMMEDIATELY (BEFORE ANYTHING ELSE)
+print('[CRITICAL] Starting database initialization...')
 auto_init_database()
+print('[CRITICAL] Database initialization finished. Proceeding with Flask setup...')
 
 # ============================================================================
 # FLASK APP INITIALIZATION (AFTER DATABASE IS READY)
