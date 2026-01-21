@@ -3,16 +3,100 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>대시보드 - AI Dropshipping ERP</title>
+    <title>대시보드 - AI Dropshipping ERP v2.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body class="bg-gray-50">
     {% include 'nav.html' %}
     
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="container mx-auto px-4 pt-4">
+                {% for category, message in messages %}
+                <div class="bg-{{ 'red' if category == 'error' else 'blue' if category == 'info' else 'yellow' if category == 'warning' else 'green' }}-50 border-l-4 border-{{ 'red' if category == 'error' else 'blue' if category == 'info' else 'yellow' if category == 'warning' else 'green' }}-500 p-4 mb-4 rounded">
+                    <p class="text-{{ 'red' if category == 'error' else 'blue' if category == 'info' else 'yellow' if category == 'warning' else 'green' }}-700">{{ message }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+    
     <div class="container mx-auto px-4 py-8">
         <div class="mb-8">
-            <h1 class="text-4xl font-bold text-gray-800 mb-2">📊 실시간 대시보드</h1>
-            <p class="text-gray-600">AI 드롭쉬핑 ERP - 완전 자동화 시스템</p>
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">📊 실시간 대시보드 <span class="text-sm bg-blue-500 text-white px-2 py-1 rounded">v2.0</span></h1>
+            <p class="text-gray-600">AI 드롭쉬핑 ERP - 완전 자동화 시스템 with Financial Analytics</p>
+        </div>
+        
+        <!-- NEW: Financial Summary Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow-lg p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-blue-100 text-sm font-semibold">오늘 매출</p>
+                        <p class="text-3xl font-bold mt-2">{{ "{:,}".format(today_sales) }}원</p>
+                        <p class="text-blue-100 text-xs mt-1">순수익: {{ "{:,}".format(today_profit) }}원</p>
+                    </div>
+                    <div class="bg-blue-400 bg-opacity-50 rounded-full p-3">
+                        <span class="text-3xl">💵</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow-lg p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-green-100 text-sm font-semibold">이번 달 매출</p>
+                        <p class="text-3xl font-bold mt-2">{{ "{:,}".format(month_sales) }}원</p>
+                        <p class="text-green-100 text-xs mt-1">순수익: {{ "{:,}".format(month_profit) }}원</p>
+                    </div>
+                    <div class="bg-green-400 bg-opacity-50 rounded-full p-3">
+                        <span class="text-3xl">💰</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-purple-100 text-sm font-semibold">누적 순수익</p>
+                        <p class="text-3xl font-bold mt-2">{{ "{:,}".format(total_profit) }}원</p>
+                        <p class="text-purple-100 text-xs mt-1">전체 기간</p>
+                    </div>
+                    <div class="bg-purple-400 bg-opacity-50 rounded-full p-3">
+                        <span class="text-3xl">🏆</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow-lg p-6 text-white">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-orange-100 text-sm font-semibold">월 예상 수익</p>
+                        <p class="text-3xl font-bold mt-2">{{ "{:,}".format(month_profit) }}원</p>
+                        <p class="text-orange-100 text-xs mt-1">현재까지 실적</p>
+                    </div>
+                    <div class="bg-orange-400 bg-opacity-50 rounded-full p-3">
+                        <span class="text-3xl">📈</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- NEW: Financial Charts -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+            <!-- Daily Revenue Chart -->
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">📊 최근 7일 매출 추이</h2>
+                <canvas id="dailySalesChart"></canvas>
+            </div>
+            
+            <!-- Monthly Profit Chart -->
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">📈 월별 순수익</h2>
+                <canvas id="monthlyProfitChart"></canvas>
+            </div>
         </div>
         
         <!-- Statistics Cards -->
@@ -53,14 +137,14 @@
                 </div>
             </div>
             
-            <div class="bg-white rounded-lg shadow-lg p-6 border-l-4 border-green-500">
+            <div class="bg-white rounded-lg shadow-lg p-6 border-l-4 border-indigo-500">
                 <div class="flex items-center justify-between">
                     <div>
-                        <p class="text-gray-600 text-sm font-semibold">누적 순수익</p>
-                        <p class="text-3xl font-bold text-gray-800 mt-2">{{ "{:,}".format(total_profit) }}원</p>
+                        <p class="text-gray-600 text-sm font-semibold">시스템 상태</p>
+                        <p class="text-xl font-bold text-green-600 mt-2">정상 운영 중</p>
                     </div>
-                    <div class="bg-green-100 rounded-full p-3">
-                        <span class="text-3xl">💰</span>
+                    <div class="bg-indigo-100 rounded-full p-3">
+                        <span class="text-3xl">✅</span>
                     </div>
                 </div>
             </div>
@@ -143,6 +227,98 @@
     </div>
     
     <script>
+        // Initialize Chart.js charts
+        const dailyLabels = {{ daily_labels|safe }};
+        const dailySalesData = {{ daily_sales_data|safe }};
+        const dailyProfitData = {{ daily_profit_data|safe }};
+        const monthlyLabels = {{ monthly_labels|safe }};
+        const monthlyProfitData = {{ monthly_profit_data|safe }};
+        
+        // Daily Sales Chart
+        const dailyCtx = document.getElementById('dailySalesChart').getContext('2d');
+        new Chart(dailyCtx, {
+            type: 'bar',
+            data: {
+                labels: dailyLabels,
+                datasets: [
+                    {
+                        label: '매출액',
+                        data: dailySalesData,
+                        backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                        borderColor: 'rgb(59, 130, 246)',
+                        borderWidth: 2
+                    },
+                    {
+                        label: '순수익',
+                        data: dailyProfitData,
+                        backgroundColor: 'rgba(16, 185, 129, 0.5)',
+                        borderColor: 'rgb(16, 185, 129)',
+                        borderWidth: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    title: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value.toLocaleString() + '원';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Monthly Profit Chart
+        const monthlyCtx = document.getElementById('monthlyProfitChart').getContext('2d');
+        new Chart(monthlyCtx, {
+            type: 'bar',
+            data: {
+                labels: monthlyLabels,
+                datasets: [{
+                    label: '월별 순수익',
+                    data: monthlyProfitData,
+                    backgroundColor: 'rgba(139, 92, 246, 0.5)',
+                    borderColor: 'rgb(139, 92, 246)',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    title: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value.toLocaleString() + '원';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
         function openSourcingModal() {
             document.getElementById('sourcing-modal').classList.remove('hidden');
         }

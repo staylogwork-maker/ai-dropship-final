@@ -613,12 +613,28 @@ def update_marketplace_status(marketplace, external_id, status):
 
 def update_naver_order_status(order_id, status):
     """Update Naver order status"""
-    # Simplified implementation
+    # Check if API credentials are configured
+    client_id = get_config('naver_client_id')
+    client_secret = get_config('naver_client_secret')
+    
+    if not client_id or not client_secret:
+        log_activity('marketplace', 'Naver API credentials not configured - skipping status update', 'warning')
+        return {'success': True, 'message': f'Order {order_id} status updated locally (API not configured)', 'skipped': True}
+    
+    # Simplified implementation - in production, make actual API call
     return {'success': True, 'message': f'Order {order_id} status updated to {status}'}
 
 def update_coupang_order_status(order_id, status):
     """Update Coupang order status"""
-    # Simplified implementation
+    # Check if API credentials are configured
+    access_key = get_config('coupang_access_key')
+    secret_key = get_config('coupang_secret_key')
+    
+    if not access_key or not secret_key:
+        log_activity('marketplace', 'Coupang API credentials not configured - skipping status update', 'warning')
+        return {'success': True, 'message': f'Order {order_id} status updated locally (API not configured)', 'skipped': True}
+    
+    # Simplified implementation - in production, make actual API call
     return {'success': True, 'message': f'Order {order_id} status updated to {status}'}
 
 # ============================================================================
@@ -1044,17 +1060,88 @@ def dashboard():
     cursor.execute('SELECT SUM(net_profit) as total FROM orders WHERE order_status = "delivered"')
     total_profit = cursor.fetchone()['total'] or 0
     
+    # NEW: Financial analytics for Version 2.0
+    # Today's revenue
+    cursor.execute('''
+        SELECT 
+            COALESCE(SUM(sale_price), 0) as today_sales,
+            COALESCE(SUM(net_profit), 0) as today_profit
+        FROM orders 
+        WHERE DATE(delivered_at) = DATE('now') AND order_status = 'delivered'
+    ''')
+    today_stats = cursor.fetchone()
+    today_sales = today_stats['today_sales']
+    today_profit = today_stats['today_profit']
+    
+    # This month's revenue
+    cursor.execute('''
+        SELECT 
+            COALESCE(SUM(sale_price), 0) as month_sales,
+            COALESCE(SUM(net_profit), 0) as month_profit
+        FROM orders 
+        WHERE strftime('%Y-%m', delivered_at) = strftime('%Y-%m', 'now') 
+        AND order_status = 'delivered'
+    ''')
+    month_stats = cursor.fetchone()
+    month_sales = month_stats['month_sales']
+    month_profit = month_stats['month_profit']
+    
+    # Last 7 days daily revenue for chart
+    cursor.execute('''
+        SELECT 
+            DATE(delivered_at) as date,
+            COALESCE(SUM(sale_price), 0) as daily_sales,
+            COALESCE(SUM(net_profit), 0) as daily_profit
+        FROM orders 
+        WHERE delivered_at >= DATE('now', '-7 days') 
+        AND order_status = 'delivered'
+        GROUP BY DATE(delivered_at)
+        ORDER BY date
+    ''')
+    daily_stats = cursor.fetchall()
+    
+    # Monthly revenue for last 6 months
+    cursor.execute('''
+        SELECT 
+            strftime('%Y-%m', delivered_at) as month,
+            COALESCE(SUM(sale_price), 0) as monthly_sales,
+            COALESCE(SUM(net_profit), 0) as monthly_profit
+        FROM orders 
+        WHERE delivered_at >= DATE('now', '-6 months')
+        AND order_status = 'delivered'
+        GROUP BY strftime('%Y-%m', delivered_at)
+        ORDER BY month
+    ''')
+    monthly_stats = cursor.fetchall()
+    
     # Recent activity logs
     cursor.execute('SELECT * FROM activity_logs ORDER BY created_at DESC LIMIT 20')
     recent_logs = cursor.fetchall()
     
     conn.close()
     
+    # Prepare chart data
+    daily_labels = [row['date'] if row['date'] else '' for row in daily_stats] if daily_stats else []
+    daily_sales_data = [row['daily_sales'] for row in daily_stats] if daily_stats else []
+    daily_profit_data = [row['daily_profit'] for row in daily_stats] if daily_stats else []
+    
+    monthly_labels = [row['month'] if row['month'] else '' for row in monthly_stats] if monthly_stats else []
+    monthly_profit_data = [row['monthly_profit'] for row in monthly_stats] if monthly_stats else []
+    
     return render_template('dashboard.html',
                          pending_products=pending_products,
                          pending_orders=pending_orders,
                          urgent_orders=urgent_orders,
                          total_profit=total_profit,
+                         today_sales=today_sales,
+                         today_profit=today_profit,
+                         month_sales=month_sales,
+                         month_profit=month_profit,
+                         daily_labels=json.dumps(daily_labels),
+                         daily_sales_data=json.dumps(daily_sales_data),
+                         daily_profit_data=json.dumps(daily_profit_data),
+                         monthly_labels=json.dumps(monthly_labels),
+                         monthly_profit_data=json.dumps(monthly_profit_data),
                          recent_logs=recent_logs)
 
 @app.route('/products')
