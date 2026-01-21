@@ -3,7 +3,7 @@ AI Dropshipping ERP System - Main Application
 Complete implementation with all 8 modules
 """
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file, flash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
@@ -33,6 +33,35 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 DB_PATH = 'dropship.db'
+
+# ============================================================================
+# JINJA2 CUSTOM FILTERS
+# ============================================================================
+
+def parse_datetime_filter(date_string):
+    """Parse datetime string to datetime object for Jinja2 template"""
+    if not date_string:
+        return datetime.now()
+    
+    # Handle various datetime formats
+    try:
+        # ISO format: 2024-01-21 12:34:56 or with microseconds
+        date_str = str(date_string).split('.')[0]  # Remove microseconds if present
+        if 'T' in date_str:
+            # ISO format with T separator
+            return datetime.fromisoformat(date_str.replace('T', ' '))
+        else:
+            # Standard SQL format
+            return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+    except (ValueError, AttributeError):
+        # If parsing fails, return current time to avoid template errors
+        return datetime.now()
+
+# Register custom Jinja2 filter
+app.jinja_env.filters['parse_datetime'] = parse_datetime_filter
+
+# Add now() function to Jinja2 globals for template usage
+app.jinja_env.globals['now'] = datetime.now
 
 # ============================================================================
 # DATABASE UTILITIES
