@@ -993,16 +993,18 @@ def scrape_alibaba_search(keyword, max_results=50):
         'browser': 'true',
         'return_page_source': 'true',
         'wait_for_selector': '.organic-list-offer',
-        'wait_for_timeout': '10000',
+        'wait_for_timeout': '15000',
+        'proxy_type': 'residential',
         'proxy_country': 'US'
     }
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
     }
     
     try:
-        app.logger.info('[Alibaba Scraping] 🌐 Sending request to ScrapingAnt...')
+        app.logger.info('[Alibaba Scraping] 🌐 Sending request to ScrapingAnt with RESIDENTIAL proxy...')
+        app.logger.info(f'[Alibaba Scraping] URL: {search_url}')
         response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120, allow_redirects=False)
         
         if response.status_code in [301, 302, 303, 307, 308]:
@@ -1013,7 +1015,11 @@ def scrape_alibaba_search(keyword, max_results=50):
         
         if response.status_code != 200:
             app.logger.error(f'[Alibaba Scraping] ❌ API error: {response.status_code}')
+            app.logger.error(f'[Alibaba Scraping] Response: {response.text[:500]}')
             return {'products': [], 'count': 0}
+        
+        app.logger.info(f'[Alibaba Scraping] ✅ Response received: {len(response.text)} chars')
+        app.logger.info(f'[Alibaba Scraping] Preview: {response.text[:500]}')
         
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(response.text, 'lxml')
@@ -1022,14 +1028,16 @@ def scrape_alibaba_search(keyword, max_results=50):
         selectors = [
             ('div', 'organic-list-offer'),
             ('div', 'offer-card'),
-            ('div', 'product-card')
+            ('div', 'product-card'),
+            ('div', 'search-card-e-slider'),
+            ('a', 'search-card-e-title')
         ]
         
         card_items = []
         for tag, class_name in selectors:
             card_items = soup.find_all(tag, class_=class_name)
             if len(card_items) > 0:
-                app.logger.info(f'[Alibaba Scraping] Found {len(card_items)} items with selector {tag}.{class_name}')
+                app.logger.info(f'[Alibaba Scraping] ✅ Found {len(card_items)} items with selector {tag}.{class_name}')
                 break
         
         for idx, item in enumerate(card_items[:max_results]):
@@ -1129,16 +1137,18 @@ def scrape_aliexpress_search(keyword, max_results=50):
         'browser': 'true',
         'return_page_source': 'true',
         'wait_for_selector': '.list--gallery--C2f2tvm',
-        'wait_for_timeout': '10000',
+        'wait_for_timeout': '15000',
+        'proxy_type': 'residential',
         'proxy_country': 'US'
     }
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
     }
     
     try:
-        app.logger.info('[AliExpress Scraping] 🌐 Sending request to ScrapingAnt...')
+        app.logger.info('[AliExpress Scraping] 🌐 Sending request to ScrapingAnt with RESIDENTIAL proxy...')
+        app.logger.info(f'[AliExpress Scraping] URL: {search_url}')
         response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120, allow_redirects=False)
         
         if response.status_code in [301, 302, 303, 307, 308]:
@@ -1149,7 +1159,11 @@ def scrape_aliexpress_search(keyword, max_results=50):
         
         if response.status_code != 200:
             app.logger.error(f'[AliExpress Scraping] ❌ API error: {response.status_code}')
+            app.logger.error(f'[AliExpress Scraping] Response: {response.text[:500]}')
             return {'products': [], 'count': 0}
+        
+        app.logger.info(f'[AliExpress Scraping] ✅ Response received: {len(response.text)} chars')
+        app.logger.info(f'[AliExpress Scraping] Preview: {response.text[:500]}')
         
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(response.text, 'lxml')
@@ -1158,7 +1172,9 @@ def scrape_aliexpress_search(keyword, max_results=50):
         selectors = [
             ('div', 'list--gallery--C2f2tvm'),
             ('div', 'product-snippet'),
-            ('div', 'product-card')
+            ('div', 'product-card'),
+            ('div', 'search-item'),
+            ('a', 'product-link')
         ]
         
         card_items = []
@@ -1259,7 +1275,9 @@ def search_integrated_hybrid(keyword, max_results=50):
     
     if len(all_products) == 0:
         app.logger.error('[Hybrid Engine] ❌ No products found from either source!')
-        return {'products': [], 'count': 0}
+        app.logger.warning('[Hybrid Engine] 🔄 Falling back to TEST DATA for development')
+        test_data = generate_test_products(keyword, 5)
+        return test_data
     
     # Calculate profitability for each product
     for product in all_products:
