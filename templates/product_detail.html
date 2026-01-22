@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>상품 수정 - AI Dropshipping ERP</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .tab-button.active { border-bottom-color: #2563eb; color: #2563eb; }
+        .preview-phone {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            border-radius: 20px;
+        }
+    </style>
 </head>
 <body class="bg-gray-50">
     {% include 'nav.html' %}
@@ -14,171 +24,347 @@
         <div class="mb-8">
             <a href="/products" class="text-blue-600 hover:underline mb-2 inline-block">← 상품 목록으로 돌아가기</a>
             <h1 class="text-4xl font-bold text-gray-800 mb-2">✏️ 상품 수정</h1>
-            <p class="text-gray-600">상품 정보를 수정하고 저장하세요</p>
+            <p class="text-gray-600">AI가 생성한 콘텐츠를 수정하고 미리보기를 확인하세요</p>
         </div>
         
-        <!-- Product Edit Form -->
-        <div class="bg-white rounded-lg shadow-lg p-8 max-w-4xl">
-            <form id="productForm" onsubmit="saveProduct(event)">
-                <!-- Product ID (Hidden) -->
-                <input type="hidden" id="productId" value="{{ product.id }}">
-                
-                <!-- Product Image -->
-                {% if product.images_json %}
-                <div class="mb-6">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">상품 이미지</label>
-                    {% set images = product.images_json|from_json %}
-                    {% if images and images|length > 0 %}
-                    <img src="{{ images[0] }}" alt="Product" class="w-48 h-48 object-cover rounded-lg border border-gray-300">
-                    {% endif %}
+        <!-- Tab Navigation -->
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+            <div class="border-b border-gray-200">
+                <ul class="flex flex-wrap -mb-px text-sm font-medium text-center" role="tablist">
+                    <li class="mr-2" role="presentation">
+                        <button onclick="openTab(event, 'edit')" 
+                                class="tab-button inline-block p-4 rounded-t-lg border-b-2 active" 
+                                id="edit-tab" type="button">
+                            ✏️ 정보 수정
+                        </button>
+                    </li>
+                    <li class="mr-2" role="presentation">
+                        <button onclick="openTab(event, 'preview')" 
+                                class="tab-button inline-block p-4 rounded-t-lg border-b-2 border-transparent hover:text-gray-600 hover:border-gray-300" 
+                                id="preview-tab" type="button">
+                            📱 쿠팡/네이버 미리보기
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            
+            <!-- Tab Content Container -->
+            <div class="p-8">
+                <!-- EDIT TAB -->
+                <div id="edit" class="tab-content active">
+                    <form id="productForm" onsubmit="saveProduct(event)">
+                        <!-- Product ID (Hidden) -->
+                        <input type="hidden" id="productId" value="{{ product.id }}">
+                        
+                        <!-- Product Image -->
+                        {% if product.images_json %}
+                        <div class="mb-6">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">📸 상품 이미지</label>
+                            {% set images = product.images_json|from_json %}
+                            {% if images and images|length > 0 %}
+                            <img id="product-main-image" src="{{ images[0] }}" alt="Product" class="w-48 h-48 object-cover rounded-lg border border-gray-300">
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        
+                        <!-- Basic Info Grid -->
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                            <!-- Korean Title -->
+                            <div class="md:col-span-2">
+                                <label for="title_kr" class="block text-sm font-medium text-gray-700 mb-2">
+                                    🏷️ 한글 상품명 <span class="text-red-500">*</span>
+                                </label>
+                                <input type="text" id="title_kr" name="title_kr" 
+                                       value="{{ product.title_kr or '' }}"
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                       required>
+                            </div>
+                            
+                            <!-- Chinese Title -->
+                            <div class="md:col-span-2">
+                                <label for="title_cn" class="block text-sm font-medium text-gray-700 mb-2">
+                                    🇨🇳 중국어 상품명 (원본)
+                                </label>
+                                <input type="text" id="title_cn" name="title_cn" 
+                                       value="{{ product.title_cn or '' }}"
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                                       readonly>
+                            </div>
+                            
+                            <!-- Price CNY -->
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">
+                                    💴 중국 가격 (CNY)
+                                </label>
+                                <input type="text" value="{{ product.price_cny }} 元"
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                                       readonly>
+                            </div>
+                            
+                            <!-- Price KRW -->
+                            <div>
+                                <label for="price_krw" class="block text-sm font-medium text-gray-700 mb-2">
+                                    💰 판매가 (KRW) <span class="text-red-500">*</span>
+                                </label>
+                                <input type="number" id="price_krw" name="price_krw" 
+                                       value="{{ product.price_krw }}"
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                       required>
+                            </div>
+                            
+                            <!-- Profit Margin -->
+                            <div>
+                                <label for="profit_margin" class="block text-sm font-medium text-gray-700 mb-2">
+                                    📊 마진율 (%)
+                                </label>
+                                <input type="number" step="0.1" id="profit_margin" name="profit_margin" 
+                                       value="{{ product.profit_margin }}"
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+                            
+                            <!-- Estimated Profit -->
+                            <div>
+                                <label for="estimated_profit" class="block text-sm font-medium text-gray-700 mb-2">
+                                    💵 예상 수익 (KRW)
+                                </label>
+                                <input type="number" id="estimated_profit" name="estimated_profit" 
+                                       value="{{ product.estimated_profit }}"
+                                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                            </div>
+                        </div>
+                        
+                        <!-- Divider -->
+                        <hr class="my-8 border-gray-300">
+                        <h3 class="text-2xl font-bold text-gray-800 mb-6">🤖 AI 생성 콘텐츠</h3>
+                        
+                        <!-- AI Marketing Copy -->
+                        <div class="mb-6">
+                            <label for="marketing_copy" class="block text-gray-700 font-bold mb-2">
+                                📢 AI 마케팅 멘트 (3줄 요약)
+                            </label>
+                            <textarea id="marketing_copy" name="marketing_copy" rows="5" 
+                                   class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                   placeholder="AI가 생성한 마케팅 문구가 여기에 표시됩니다.">{{ product.marketing_copy or '' }}</textarea>
+                            <p class="text-xs text-gray-500 mt-1">※ 상품 소개에 사용될 짧은 마케팅 문구입니다.</p>
+                        </div>
+                        
+                        <!-- AI Description (Korean) - MAIN FIELD -->
+                        <div class="mb-6">
+                            <label for="desc_editor" class="block text-gray-700 font-bold mb-2">
+                                📝 상세페이지 본문 (HTML) <span class="text-red-500">*</span>
+                            </label>
+                            <p class="text-xs text-gray-500 mb-2">
+                                ※ 여기에 AI가 쓴 내용이 보여야 합니다. 비어있으면 [AI 생성]을 다시 누르세요.
+                            </p>
+                            <textarea id="desc_editor" name="description_kr" rows="20" 
+                                   class="w-full p-3 border border-gray-300 rounded-lg font-mono text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                   placeholder="<h2>상품 특징</h2><p>여기에 HTML 형식의 상세 설명을 입력하세요...</p>">{{ product.description_kr or '' }}</textarea>
+                            <p class="text-xs text-gray-500 mt-1">※ 쿠팡/네이버에 등록될 상세페이지 본문입니다. HTML 태그 사용 가능.</p>
+                        </div>
+                        
+                        <!-- Search Tags -->
+                        <div class="mb-6">
+                            <label for="tags" class="block text-gray-700 font-bold mb-2">
+                                🏷️ 검색 태그 (#키워드)
+                            </label>
+                            <input type="text" id="tags" name="tags" 
+                                   value="{{ product.tags or '' }}" 
+                                   class="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+                                   placeholder="예: 겨울필수템, 전기담요, 난방용품">
+                            <p class="text-xs text-gray-500 mt-1">※ 쉼표(,)로 구분하여 입력하세요. 검색 최적화에 사용됩니다.</p>
+                        </div>
+                        
+                        <!-- Chinese Original (Reference) -->
+                        <div class="mb-6">
+                            <label for="description_cn" class="block text-sm font-medium text-gray-700 mb-2">
+                                🇨🇳 중국어 원본 설명 (참고용)
+                            </label>
+                            <textarea id="description_cn" name="description_cn" rows="6"
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm"
+                                   readonly>{{ product.description_cn or '' }}</textarea>
+                            <p class="text-xs text-gray-500 mt-1">※ 1688 원본 상품 설명 (읽기 전용)</p>
+                        </div>
+                        
+                        <!-- Metadata -->
+                        <div class="grid grid-cols-2 gap-6 mb-6">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">🏷️ 상태</label>
+                                <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full 
+                                    {% if product.status == 'pending' %}bg-yellow-100 text-yellow-800
+                                    {% elif product.status == 'approved' %}bg-green-100 text-green-800
+                                    {% else %}bg-gray-100 text-gray-800{% endif %}">
+                                    {{ product.status }}
+                                </span>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">🛡️ 안전 상태</label>
+                                <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full 
+                                    {% if product.safety_status == 'passed' %}bg-green-100 text-green-800
+                                    {% else %}bg-red-100 text-red-800{% endif %}">
+                                    {{ product.safety_status }}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <!-- Original URL -->
+                        <div class="mb-6">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">🔗 1688 원본 링크</label>
+                            <a href="{{ product.original_url }}" target="_blank" class="text-blue-600 hover:underline">
+                                {{ product.original_url }}
+                            </a>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="flex justify-end space-x-4 pt-6 border-t border-gray-200">
+                            <a href="/products" class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+                                취소
+                            </a>
+                            <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">
+                                💾 저장
+                            </button>
+                        </div>
+                    </form>
                 </div>
-                {% endif %}
                 
-                <!-- Korean Title -->
-                <div class="mb-6">
-                    <label for="title_kr" class="block text-sm font-medium text-gray-700 mb-2">
-                        한글 상품명 <span class="text-red-500">*</span>
-                    </label>
-                    <input type="text" id="title_kr" name="title_kr" 
-                           value="{{ product.title_kr or '' }}"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                           required>
+                <!-- PREVIEW TAB -->
+                <div id="preview" class="tab-content">
+                    <div class="flex justify-center items-start">
+                        <!-- Phone Preview Container -->
+                        <div class="preview-phone">
+                            <div class="bg-white w-[375px] min-h-[667px] shadow-2xl rounded-3xl overflow-hidden border-8 border-gray-800">
+                                <!-- Phone Header -->
+                                <div class="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 text-center font-bold text-lg">
+                                    📱 Coupang Preview
+                                </div>
+                                
+                                <!-- Phone Content -->
+                                <div class="overflow-y-auto h-[600px] bg-white">
+                                    <!-- Product Image -->
+                                    {% if product.images_json %}
+                                    {% set images = product.images_json|from_json %}
+                                    {% if images and images|length > 0 %}
+                                    <img id="preview-image" src="{{ images[0] }}" class="w-full h-auto" alt="Product Preview">
+                                    {% endif %}
+                                    {% endif %}
+                                    
+                                    <!-- Product Info -->
+                                    <div class="p-4">
+                                        <h2 id="preview-title" class="text-lg font-bold text-gray-800 mb-2">
+                                            {{ product.title_kr or '상품명이 여기에 표시됩니다' }}
+                                        </h2>
+                                        <p id="preview-price" class="text-2xl text-red-600 font-bold mb-1">
+                                            {{ "{:,}".format(product.price_krw if product.price_krw else 0) }}원
+                                        </p>
+                                        <p class="text-sm text-gray-600 mb-4">
+                                            무료배송 · 로켓배송
+                                        </p>
+                                        
+                                        <!-- Marketing Copy -->
+                                        <div id="preview-marketing" class="bg-blue-50 border-l-4 border-blue-500 p-3 mb-4 rounded">
+                                            <p class="text-sm text-gray-800 whitespace-pre-wrap">{{ product.marketing_copy or 'AI 마케팅 문구가 여기에 표시됩니다.' }}</p>
+                                        </div>
+                                        
+                                        <hr class="my-4 border-gray-200">
+                                        
+                                        <!-- Tags -->
+                                        {% if product.tags %}
+                                        <div id="preview-tags" class="mb-4">
+                                            <div class="flex flex-wrap gap-2">
+                                                {% for tag in product.tags.split(',') %}
+                                                <span class="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs">
+                                                    #{{ tag.strip() }}
+                                                </span>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                        
+                                        <h3 class="text-lg font-bold text-gray-800 mb-3 mt-6">📝 상품 상세 정보</h3>
+                                        
+                                        <!-- HTML Content Preview -->
+                                        <div id="preview-html-container" class="prose prose-sm max-w-none text-gray-700">
+                                            {{ product.description_kr|safe if product.description_kr else '<p class="text-gray-400 italic">상세 설명이 여기에 표시됩니다.</p>' }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Preview Instructions -->
+                    <div class="mt-6 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                        <p class="text-sm text-gray-700">
+                            <strong>💡 미리보기 사용법:</strong> 
+                            상단 <strong>[✏️ 정보 수정]</strong> 탭에서 내용을 수정한 후 이 탭으로 돌아오면 실시간으로 변경된 내용을 확인할 수 있습니다.
+                        </p>
+                    </div>
                 </div>
-                
-                <!-- Chinese Title -->
-                <div class="mb-6">
-                    <label for="title_cn" class="block text-sm font-medium text-gray-700 mb-2">
-                        중국어 상품명 (원본)
-                    </label>
-                    <input type="text" id="title_cn" name="title_cn" 
-                           value="{{ product.title_cn or '' }}"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                           readonly>
-                </div>
-                
-                <!-- Price CNY (Read-only) -->
-                <div class="mb-6">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        중국 가격 (CNY)
-                    </label>
-                    <input type="text" value="{{ product.price_cny }} 元"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                           readonly>
-                </div>
-                
-                <!-- Price KRW -->
-                <div class="mb-6">
-                    <label for="price_krw" class="block text-sm font-medium text-gray-700 mb-2">
-                        판매가 (KRW) <span class="text-red-500">*</span>
-                    </label>
-                    <input type="number" id="price_krw" name="price_krw" 
-                           value="{{ product.price_krw }}"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                           required>
-                </div>
-                
-                <!-- Profit Margin -->
-                <div class="mb-6">
-                    <label for="profit_margin" class="block text-sm font-medium text-gray-700 mb-2">
-                        마진율 (%)
-                    </label>
-                    <input type="number" step="0.1" id="profit_margin" name="profit_margin" 
-                           value="{{ product.profit_margin }}"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                </div>
-                
-                <!-- Estimated Profit -->
-                <div class="mb-6">
-                    <label for="estimated_profit" class="block text-sm font-medium text-gray-700 mb-2">
-                        예상 수익 (KRW)
-                    </label>
-                    <input type="number" id="estimated_profit" name="estimated_profit" 
-                           value="{{ product.estimated_profit }}"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                </div>
-                
-                <!-- Original URL (Read-only) -->
-                <div class="mb-6">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        1688 원본 링크
-                    </label>
-                    <a href="{{ product.original_url }}" target="_blank" class="text-blue-600 hover:underline">
-                        {{ product.original_url }}
-                    </a>
-                </div>
-                
-                <!-- Status (Read-only) -->
-                <div class="mb-6">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        상태
-                    </label>
-                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full 
-                        {% if product.status == 'pending' %}bg-yellow-100 text-yellow-800
-                        {% elif product.status == 'approved' %}bg-green-100 text-green-800
-                        {% else %}bg-gray-100 text-gray-800{% endif %}">
-                        {{ product.status }}
-                    </span>
-                </div>
-                
-                <!-- Safety Status -->
-                <div class="mb-6">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        안전 상태
-                    </label>
-                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full 
-                        {% if product.safety_status == 'passed' %}bg-green-100 text-green-800
-                        {% else %}bg-red-100 text-red-800{% endif %}">
-                        {{ product.safety_status }}
-                    </span>
-                </div>
-                
-                <!-- AI Marketing Copy (Korean) -->
-                <div class="mb-6">
-                    <label for="marketing_copy" class="block text-sm font-medium text-gray-700 mb-2">
-                        📝 AI 마케팅 문구 (한글)
-                    </label>
-                    <textarea id="marketing_copy" name="marketing_copy" rows="8"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                           placeholder="AI가 생성한 마케팅 문구가 여기에 표시됩니다.">{{ product.marketing_copy or '' }}</textarea>
-                    <p class="text-xs text-gray-500 mt-1">※ 상품 소개에 사용될 짧은 마케팅 문구입니다.</p>
-                </div>
-                
-                <!-- Description (Korean) -->
-                <div class="mb-6">
-                    <label for="description_kr" class="block text-sm font-medium text-gray-700 mb-2">
-                        📝 AI 상세 설명 (한글 - HTML/Text) <span class="text-red-500">*</span>
-                    </label>
-                    <textarea id="description_kr" name="description_kr" rows="15"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-                           placeholder="AI가 생성한 상세 페이지 내용이 여기에 표시됩니다.">{{ product.description_kr or '' }}</textarea>
-                    <p class="text-xs text-gray-500 mt-1">※ 쿠팡/네이버에 등록될 상세페이지 본문입니다.</p>
-                </div>
-                
-                <!-- Description (Chinese - Original) -->
-                <div class="mb-6">
-                    <label for="description_cn" class="block text-sm font-medium text-gray-700 mb-2">
-                        📝 중국어 원본 설명 (참고용)
-                    </label>
-                    <textarea id="description_cn" name="description_cn" rows="8"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm"
-                           readonly>{{ product.description_cn or '' }}</textarea>
-                    <p class="text-xs text-gray-500 mt-1">※ 1688 원본 상품 설명 (읽기 전용)</p>
-                </div>
-                
-                <!-- Action Buttons -->
-                <div class="flex justify-end space-x-4">
-                    <a href="/products" class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
-                        취소
-                    </a>
-                    <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                        💾 저장
-                    </button>
-                </div>
-            </form>
+            </div>
         </div>
     </div>
     
     <script>
+        // Tab Switching
+        function openTab(evt, tabName) {
+            // Hide all tabs
+            const tabContents = document.getElementsByClassName("tab-content");
+            for (let i = 0; i < tabContents.length; i++) {
+                tabContents[i].classList.remove("active");
+            }
+            
+            // Remove active class from all tab buttons
+            const tabButtons = document.getElementsByClassName("tab-button");
+            for (let i = 0; i < tabButtons.length; i++) {
+                tabButtons[i].classList.remove("active");
+            }
+            
+            // Show current tab and mark button as active
+            document.getElementById(tabName).classList.add("active");
+            evt.currentTarget.classList.add("active");
+            
+            // Update preview when switching to preview tab
+            if (tabName === 'preview') {
+                updatePreview();
+            }
+        }
+        
+        // Update Preview
+        function updatePreview() {
+            // Update title
+            const title = document.getElementById('title_kr').value;
+            document.getElementById('preview-title').textContent = title || '상품명이 여기에 표시됩니다';
+            
+            // Update price
+            const price = parseInt(document.getElementById('price_krw').value) || 0;
+            document.getElementById('preview-price').textContent = price.toLocaleString() + '원';
+            
+            // Update marketing copy
+            const marketing = document.getElementById('marketing_copy').value;
+            document.getElementById('preview-marketing').innerHTML = 
+                '<p class="text-sm text-gray-800 whitespace-pre-wrap">' + 
+                (marketing || 'AI 마케팅 문구가 여기에 표시됩니다.') + 
+                '</p>';
+            
+            // Update tags
+            const tags = document.getElementById('tags').value;
+            if (tags) {
+                const tagArray = tags.split(',');
+                let tagsHtml = '<div class="flex flex-wrap gap-2">';
+                tagArray.forEach(tag => {
+                    tagsHtml += `<span class="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs">#${tag.trim()}</span>`;
+                });
+                tagsHtml += '</div>';
+                document.getElementById('preview-tags').innerHTML = tagsHtml;
+            }
+            
+            // Update HTML description
+            const rawHtml = document.getElementById('desc_editor').value;
+            document.getElementById('preview-html-container').innerHTML = 
+                rawHtml || '<p class="text-gray-400 italic">상세 설명이 여기에 표시됩니다.</p>';
+        }
+        
+        // Save Product
         async function saveProduct(event) {
             event.preventDefault();
             
@@ -190,8 +376,9 @@
                 profit_margin: parseFloat(document.getElementById('profit_margin').value),
                 estimated_profit: parseInt(document.getElementById('estimated_profit').value),
                 marketing_copy: document.getElementById('marketing_copy').value,
-                description_kr: document.getElementById('description_kr').value,
-                description_cn: document.getElementById('description_cn').value
+                description_kr: document.getElementById('desc_editor').value,
+                description_cn: document.getElementById('description_cn').value,
+                tags: document.getElementById('tags').value
             };
             
             try {
