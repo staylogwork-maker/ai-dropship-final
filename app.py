@@ -1112,9 +1112,6 @@ def generate_fallback_test_data(keyword):
     app.logger.warning('[TEST DATA] ⚠️ 이것은 테스트 데이터입니다 - 실제 1688 상품이 아닙니다!')
     
     return {'products': products, 'count': len(products), 'is_test_data': True}
-        app.logger.error(f'[1688 Scraping] ❌ {error_msg}')
-        app.logger.exception(e)
-        return {'error': error_msg}
 
 def analyze_product_profitability(price_cny):
     """Calculate profit margin and KRW price"""
