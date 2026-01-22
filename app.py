@@ -312,6 +312,16 @@ print('[CRITICAL] Database initialization finished. Proceeding with Flask setup.
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
 
+# Add custom Jinja2 filters
+@app.template_filter('from_json')
+def from_json_filter(value):
+    """Parse JSON string to Python object"""
+    import json
+    try:
+        return json.loads(value) if value else []
+    except (ValueError, TypeError):
+        return []
+
 # ============================================================================
 # LOGGING CONFIGURATION
 # ============================================================================
@@ -2428,6 +2438,61 @@ def products():
     conn.close()
     
     return render_template('products.html', products=products)
+
+@app.route('/products/<int:product_id>')
+@login_required
+def product_detail(product_id):
+    """Product detail and edit page"""
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM sourced_products WHERE id = ?', (product_id,))
+    product = cursor.fetchone()
+    conn.close()
+    
+    if not product:
+        flash('상품을 찾을 수 없습니다', 'error')
+        return redirect('/products')
+    
+    return render_template('product_detail.html', product=product)
+
+@app.route('/api/products/<int:product_id>/update', methods=['POST'])
+@login_required
+def update_product(product_id):
+    """Update product information"""
+    try:
+        data = request.get_json()
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Update product fields
+        cursor.execute('''
+            UPDATE sourced_products 
+            SET title_kr = ?, 
+                title_cn = ?,
+                price_krw = ?,
+                profit_margin = ?,
+                estimated_profit = ?
+            WHERE id = ?
+        ''', (
+            data.get('title_kr'),
+            data.get('title_cn'),
+            data.get('price_krw'),
+            data.get('profit_margin'),
+            data.get('estimated_profit'),
+            product_id
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        log_activity('product_update', f'상품 수정: ID {product_id}', 'success')
+        
+        return jsonify({'success': True, 'message': '상품이 수정되었습니다'})
+        
+    except Exception as e:
+        app.logger.error(f'[Product Update] ❌ Error: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/orders')
 @login_required
