@@ -34,12 +34,16 @@
                     <tr class="hover:bg-gray-50">
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ product.id }}</td>
                         <td class="px-6 py-4 text-sm text-gray-900">
-                            <div class="font-medium">
+                            <!-- UNIVERSAL LAYOUT PROTECTION: Max-width + Truncate -->
+                            <div class="font-medium max-w-[250px] overflow-hidden text-overflow-ellipsis whitespace-nowrap" title="{{ product.title_kr or product.title_cn }}">
                                 <a href="/products/{{ product.id }}" class="text-gray-900 hover:text-blue-600 hover:underline">
                                     {{ product.title_kr or product.title_cn }}
                                 </a>
                             </div>
-                            <a href="{{ product.original_url }}" target="_blank" class="text-blue-600 hover:underline text-xs">
+                            <!-- LINK PROTECTION: Truncate long URLs (AliExpress, Alibaba, etc.) -->
+                            <a href="{{ product.original_url }}" target="_blank" 
+                               class="text-blue-600 hover:underline text-xs max-w-[200px] inline-block overflow-hidden text-overflow-ellipsis whitespace-nowrap" 
+                               title="{{ product.original_url }}">
                                 1688 원본 링크 →
                             </a>
                         </td>

@@ -893,6 +893,20 @@ def scrape_1688_search(keyword, max_results=50):
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
     
+    # CRITICAL: Add 1688 authentication cookie for real pricing
+    cookie_1688 = get_config('1688_cookie')
+    if cookie_1688 and cookie_1688.strip():
+        headers['Cookie'] = cookie_1688.strip()
+        app.logger.info(f'[1688 Scraping] 🔑 Using 1688 authentication cookie (length: {len(cookie_1688.strip())})')
+        app.logger.info(f'[1688 Scraping] Cookie preview: {cookie_1688.strip()[:50]}...')
+    else:
+        app.logger.warning('[1688 Scraping] ⚠️ No 1688 cookie configured - prices may not be accurate')
+        app.logger.warning('[1688 Scraping] 💡 To get real wholesale prices:')
+        app.logger.warning('[1688 Scraping]    1. Login to 1688.com in browser')
+        app.logger.warning('[1688 Scraping]    2. Open F12 Developer Tools → Network tab')
+        app.logger.warning('[1688 Scraping]    3. Copy the "Cookie" header from any request')
+        app.logger.warning('[1688 Scraping]    4. Add to config: 1688_cookie = <your cookie>')
+    
     try:
         app.logger.info('[1688 Scraping] 🌐 Sending request to ScrapingAnt API with BROWSER MODE...')
         app.logger.info('[1688 Scraping] Parameters: browser=true, wait_for_selector=.offer-list-row')
