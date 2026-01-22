@@ -196,6 +196,7 @@ def init_database():
         ('coupang_access_key', ''),
         ('coupang_secret_key', ''),
         ('server_static_ip', ''),
+        ('debug_mode_ignore_filters', 'false'),  # NEW: Debug mode for diagnostics
     ]
     
     cursor.executemany('INSERT INTO config (key, value) VALUES (?, ?)', default_configs)

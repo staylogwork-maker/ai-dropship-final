@@ -251,6 +251,7 @@ def auto_init_database():
                     ('coupang_access_key', ''),
                     ('coupang_secret_key', ''),
                     ('server_static_ip', ''),
+                    ('debug_mode_ignore_filters', 'false'),  # NEW: Debug mode for diagnostics
                 ]
                 cursor.executemany('INSERT INTO config (key, value) VALUES (?, ?)', default_configs)
                 print('[DB-INIT] ✅ Default configuration inserted')
@@ -1190,6 +1191,11 @@ def execute_smart_sourcing(keyword, use_test_data=False):
     conn.close()
     
     app.logger.info(f'[Smart Sniper] Completed: {saved_count}/{len(top_3)} products saved to database')
+    app.logger.info(f'[Smart Sniper] 📊 FINAL BREAKDOWN:')
+    app.logger.info(f'[Smart Sniper]   Stage 1 (Scraped): {stage_stats["stage1_scraped"]}')
+    app.logger.info(f'[Smart Sniper]   Stage 2 (Safe): {stage_stats["stage2_safe"]}')
+    app.logger.info(f'[Smart Sniper]   Stage 3 (Profitable): {stage_stats["stage3_profitable"]}')
+    app.logger.info(f'[Smart Sniper]   Stage 4 (Final): {stage_stats["stage4_final"]}')
     log_activity('sourcing', f'✅ Smart Sourcing completed: {saved_count} products saved', 'success')
     
     return {
@@ -1200,7 +1206,9 @@ def execute_smart_sourcing(keyword, use_test_data=False):
             'safe': len(safe_products),
             'profitable': len(profitable_products),
             'final_count': len(top_3)
-        }
+        },
+        'stage_stats': stage_stats,
+        'debug_mode_enabled': debug_mode_enabled
     }
 
 @app.route('/api/sourcing/start', methods=['POST'])
@@ -1253,14 +1261,17 @@ def start_sourcing():
     result = execute_smart_sourcing(target_keyword, use_test_data=use_test_data)
     
     if not result['success']:
-        return jsonify({'error': result.get('error', 'Unknown error')}), 500
+        return jsonify({'error': result.get('error', 'Unknown error'), 'stage_stats': result.get('stage_stats', {})}), 500
     
     # Build response
     response_data = {
         'success': True,
         'mode': mode,
         'keyword': target_keyword,
-        'stats': result['stats']
+        'stats': result['stats'],
+        'stage_stats': result.get('stage_stats', {}),  # NEW: Stage-by-stage breakdown
+        'debug_mode_enabled': result.get('debug_mode_enabled', False),
+        'suggestion': result.get('suggestion', '')  # NEW: Suggestion when no products found
     }
     
     if blue_ocean_data:
