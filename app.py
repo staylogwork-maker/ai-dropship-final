@@ -124,11 +124,19 @@ def auto_init_database():
                     images_json TEXT,
                     processed_images_json TEXT,
                     status TEXT DEFAULT 'pending',
+                    keywords TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     approved_at TIMESTAMP,
                     registered_at TIMESTAMP
                 )
             ''')
+            
+            # CRITICAL: Add keywords column if it doesn't exist (migration)
+            try:
+                cursor.execute('ALTER TABLE sourced_products ADD COLUMN keywords TEXT')
+                app.logger.info('[DB Init] ✅ Added keywords column to sourced_products table')
+            except:
+                pass  # Column already exists
             
             # Create orders table
             cursor.execute('''
@@ -910,6 +918,17 @@ def scrape_1688_search(keyword, max_results=50):
     try:
         app.logger.info('[1688 Scraping] 🌐 Sending request to ScrapingAnt API with BROWSER MODE...')
         app.logger.info('[1688 Scraping] Parameters: browser=true, wait_for_selector=.offer-list-row')
+        # 🔥 EMERGENCY FIX: Prevent redirects to ensure we scrape the EXACT URL
+        response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120, allow_redirects=False)
+        
+        # If we got a redirect response, log it and fail
+        if response.status_code in [301, 302, 303, 307, 308]:
+            app.logger.error(f'[1688 Scraping] ❌ REDIRECT DETECTED: {response.status_code}')
+            app.logger.error(f'[1688 Scraping] Location: {response.headers.get("Location", "Unknown")}')
+            app.logger.error('[1688 Scraping] ⚠️ Refusing to follow redirect. Falling back to TEST DATA')
+            return generate_fallback_test_data(keyword)
+        
+        # Continue with normal processing
         response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120)
         
         app.logger.info(f'[1688 Scraping] Response status: {response.status_code}')
@@ -1014,20 +1033,36 @@ def scrape_1688_search(keyword, max_results=50):
                     if image and not image.startswith('http'):
                         image = 'https:' + image if image.startswith('//') else ''
                 
+                # 🔥 EMERGENCY FIX: STRICT validation - NO fallback URLs or placeholders
+                # If title is missing or is a URL, skip this product entirely
+                if not title or title.startswith('http') or len(title) < 3:
+                    app.logger.warning(f'[1688 Scraping] ❌ REJECTED product {idx+1}: Invalid title "{title}"')
+                    continue
+                
+                # If image is missing, use empty string instead of placeholder
+                if not image or 'placeholder' in image:
+                    app.logger.warning(f'[1688 Scraping] ⚠️ Product {idx+1} has no valid image')
+                    image = ''  # Empty string, NOT placeholder
+                
+                # If URL is missing or redirected, skip
+                if not url or not ('1688.com' in url):
+                    app.logger.warning(f'[1688 Scraping] ❌ REJECTED product {idx+1}: Invalid URL "{url}"')
+                    continue
+                
                 product = {
                     'url': url,
                     'title': title,
                     'price': price,
                     'sales': sales,
-                    'image': image or 'https://via.placeholder.com/300x300?text=Product'
+                    'image': image  # May be empty, but NEVER a placeholder
                 }
                 
-                # Only add if we have at least title and price
-                if product['title'] and product['price'] > 0:
+                # Only add if we have valid title, price, and URL
+                if product['title'] and product['price'] > 0 and product['url']:
                     products.append(product)
-                    app.logger.debug(f'[1688 Scraping] Product {idx+1}: {product["title"][:40]} - ¥{product["price"]}')
+                    app.logger.info(f'[1688 Scraping] ✅ Product {idx+1}: {product["title"][:40]} - ¥{product["price"]}')
                 else:
-                    app.logger.debug(f'[1688 Scraping] Skipped product {idx+1}: missing title or price')
+                    app.logger.warning(f'[1688 Scraping] ❌ REJECTED product {idx+1}: Incomplete data')
             except Exception as e:
                 app.logger.warning(f'[1688 Scraping] Failed to parse product {idx+1}: {str(e)}')
                 continue
@@ -1663,7 +1698,15 @@ def generate_marketing_copy(title, price):
         )
         
         if response.status_code == 200:
-            return response.json()['choices'][0]['message']['content']
+            copy = response.json()['choices'][0]['message']['content']
+            
+            # 🔥 EMERGENCY FIX: Remove labels from marketing copy
+            import re
+            copy = re.sub(r'\d+\.\s*(훅|문제|솔루션|Hook|Problem|Solution):\s*', '', copy, flags=re.IGNORECASE)
+            copy = re.sub(r'\*\*(훅|문제|솔루션|Hook|Problem|Solution)\s*\([^)]+\):\*\*\s*', '', copy, flags=re.IGNORECASE)
+            copy = re.sub(r'(훅|문제|솔루션|Hook|Problem|Solution):\s*', '', copy, flags=re.IGNORECASE)
+            
+            return copy.strip()
         else:
             return '상품 설명이 준비 중입니다.'
     
@@ -1865,10 +1908,26 @@ End with SEO tags: [TAGS]: keyword1, keyword2, ...
                     # Remove tags from HTML content
                     content = re.sub(r'\[TAGS\]:?.+?(?:\n|$)', '', content, flags=re.IGNORECASE)
             
-            # 🔥 CRITICAL: Remove section labels like "1. 훅:", "2. 솔루션:"
-            content = re.sub(r'\d+\.\s*(훅|문제|솔루션|공감|핵심|특징|디테일|FAQ|신뢰|CTA):\s*', '', content, flags=re.IGNORECASE)
+            # 🔥 EMERGENCY FIX: AGGRESSIVE label removal (all patterns)
+            import re
+            
+            # Pattern 1: Numbered labels (1. 훅:, 2. 문제:, etc.)
+            content = re.sub(r'\d+\.\s*(훅|문제|솔루션|공감|핵심|특징|디테일|FAQ|신뢰|CTA|Hook|Problem|Solution):\s*', '', content, flags=re.IGNORECASE)
+            
+            # Pattern 2: Bold labels (**훅(Hook):**, etc.)
+            content = re.sub(r'\*\*(훅|문제|솔루션|공감|핵심|특징|디테일|FAQ|신뢰|CTA|Hook|Problem|Solution)\s*\([^)]+\):\*\*\s*', '', content, flags=re.IGNORECASE)
+            
+            # Pattern 3: Labels without numbers (훅:, 문제:, etc.)
+            content = re.sub(r'(훅|문제|솔루션|공감|핵심|특징|디테일|FAQ|신뢰|CTA|Hook|Problem|Solution):\s*', '', content, flags=re.IGNORECASE)
+            
+            # Pattern 4: Labels in parentheses ((훅), (Hook), etc.)
+            content = re.sub(r'\((훅|문제|솔루션|공감|핵심|특징|디테일|FAQ|신뢰|CTA|Hook|Problem|Solution)\)\s*', '', content, flags=re.IGNORECASE)
+            
+            # Pattern 5: Section markers (SECTION 1:, etc.)
+            content = re.sub(r'SECTION\s+\d+:\s*', '', content, flags=re.IGNORECASE)
             
             app.logger.info(f'[Content Generation] ✅ Generated winning product page: {len(content)} chars')
+            app.logger.info(f'[Content Generation] 🧹 Applied AGGRESSIVE label cleanup (5 patterns)')
             if tags:
                 app.logger.info(f'[Content Generation] ✅ Extracted SEO tags: {tags}')
             
@@ -2018,21 +2077,21 @@ def generate_content(product_id):
     notice_path = create_notice_image()
     processed_images.append(notice_path)
     
-    # Update database with WINNING content AND SEO tags
+    # 🔥 EMERGENCY FIX: Store SEO tags in dedicated keywords column
     cursor.execute('''
         UPDATE sourced_products
         SET marketing_copy = ?,
             description_kr = ?,
             processed_images_json = ?,
             title_kr = ?,
-            description_cn = ?
+            keywords = ?
         WHERE id = ?
     ''', (
         marketing_copy,
         winning_html,  # Full winning structure in description_kr
         json.dumps(processed_images),
         product['title_cn'],
-        seo_tags,  # Store SEO tags in description_cn temporarily (we can add a tags column later)
+        seo_tags,  # 🔥 FIXED: Store in keywords column, NOT description_cn
         product_id
     ))
     
