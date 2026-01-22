@@ -3005,6 +3005,43 @@ def delete_product(product_id):
         app.logger.error(f'[Product Delete] ❌ Error: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/products/bulk-delete', methods=['POST'])
+@login_required
+def bulk_delete_products():
+    """Bulk delete products"""
+    try:
+        data = request.json
+        product_ids = data.get('product_ids', [])
+        
+        if not product_ids:
+            return jsonify({'success': False, 'error': '삭제할 상품을 선택해주세요'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Delete all selected products
+        deleted_count = 0
+        for product_id in product_ids:
+            cursor.execute('SELECT title_kr, title_cn FROM sourced_products WHERE id = ?', (product_id,))
+            product = cursor.fetchone()
+            
+            if product:
+                cursor.execute('DELETE FROM sourced_products WHERE id = ?', (product_id,))
+                deleted_count += 1
+                app.logger.info(f'[Bulk Delete] Deleted product ID {product_id}: {product["title_kr"] or product["title_cn"]}')
+        
+        conn.commit()
+        conn.close()
+        
+        log_activity('product_bulk_delete', f'일괄 삭제: {deleted_count}개 상품', 'success')
+        app.logger.info(f'[Bulk Delete] ✅ Successfully deleted {deleted_count} products')
+        
+        return jsonify({'success': True, 'deleted_count': deleted_count, 'message': f'{deleted_count}개의 상품이 삭제되었습니다'})
+        
+    except Exception as e:
+        app.logger.error(f'[Bulk Delete] ❌ Error: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/orders')
 @login_required
 def orders():

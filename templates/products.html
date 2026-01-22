@@ -10,9 +10,14 @@
     {% include 'nav.html' %}
     
     <div class="container mx-auto px-4 py-8">
-        <div class="mb-8">
-            <h1 class="text-4xl font-bold text-gray-800 mb-2">📦 상품 관리</h1>
-            <p class="text-gray-600">AI가 발굴한 수익성 높은 상품 목록</p>
+        <div class="mb-8 flex justify-between items-center">
+            <div>
+                <h1 class="text-4xl font-bold text-gray-800 mb-2">📦 상품 관리</h1>
+                <p class="text-gray-600">AI가 발굴한 수익성 높은 상품 목록</p>
+            </div>
+            <button id="bulk-delete-btn" onclick="bulkDeleteProducts()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition hidden">
+                🗑️ 선택 삭제 (<span id="selected-count">0</span>)
+            </button>
         </div>
         
         <!-- Products Table -->
@@ -20,6 +25,9 @@
             <table class="min-w-full divide-y divide-gray-200" style="table-layout: fixed;">
                 <thead class="bg-gray-50">
                     <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">
+                            <input type="checkbox" id="select-all" onchange="toggleSelectAll()" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                        </th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16">ID</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-64">상품명</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-32">판매가</th>
@@ -32,6 +40,9 @@
                 <tbody class="bg-white divide-y divide-gray-200">
                     {% for product in products %}
                     <tr class="hover:bg-gray-50">
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <input type="checkbox" class="product-checkbox" data-id="{{ product.id }}" onchange="updateBulkDeleteButton()" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                        </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{{ product.id }}</td>
                         <td class="px-6 py-4 text-sm text-gray-900 max-w-[200px]">
                             <!-- CRITICAL FIX: Force max-width on TD to prevent table overflow -->
@@ -44,7 +55,7 @@
                             <a href="{{ product.original_url }}" target="_blank" 
                                class="text-blue-600 hover:underline text-xs truncate overflow-hidden whitespace-nowrap inline-block max-w-[180px]" 
                                title="{{ product.original_url }}">
-                                1688 원본 링크 →
+                                원본 상품 링크 →
                             </a>
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -108,6 +119,60 @@
     </div>
     
     <script>
+        // Bulk delete functionality
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('select-all');
+            const checkboxes = document.querySelectorAll('.product-checkbox');
+            checkboxes.forEach(cb => cb.checked = selectAll.checked);
+            updateBulkDeleteButton();
+        }
+        
+        function updateBulkDeleteButton() {
+            const checkboxes = document.querySelectorAll('.product-checkbox:checked');
+            const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+            const selectedCount = document.getElementById('selected-count');
+            
+            if (checkboxes.length > 0) {
+                bulkDeleteBtn.classList.remove('hidden');
+                selectedCount.textContent = checkboxes.length;
+            } else {
+                bulkDeleteBtn.classList.add('hidden');
+            }
+        }
+        
+        async function bulkDeleteProducts() {
+            const checkboxes = document.querySelectorAll('.product-checkbox:checked');
+            const productIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.id));
+            
+            if (productIds.length === 0) {
+                alert('삭제할 상품을 선택해주세요.');
+                return;
+            }
+            
+            if (!confirm(`⚠️ 정말 선택한 ${productIds.length}개의 상품을 삭제하시겠습니까?\\n삭제된 상품은 복구할 수 없습니다.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/products/bulk-delete', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({product_ids: productIds})
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(`✅ ${result.deleted_count}개의 상품이 삭제되었습니다!`);
+                    location.reload();
+                } else {
+                    alert('❌ 삭제 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (error) {
+                alert('❌ 오류: ' + error.message);
+            }
+        }
+        
         async function generateContent(productId) {
             if (!confirm('이 상품의 AI 콘텐츠를 생성하시겠습니까?')) return;
             
