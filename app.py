@@ -2472,7 +2472,10 @@ def update_product(product_id):
                 title_cn = ?,
                 price_krw = ?,
                 profit_margin = ?,
-                estimated_profit = ?
+                estimated_profit = ?,
+                marketing_copy = ?,
+                description_kr = ?,
+                description_cn = ?
             WHERE id = ?
         ''', (
             data.get('title_kr'),
@@ -2480,6 +2483,9 @@ def update_product(product_id):
             data.get('price_krw'),
             data.get('profit_margin'),
             data.get('estimated_profit'),
+            data.get('marketing_copy'),
+            data.get('description_kr'),
+            data.get('description_cn'),
             product_id
         ))
         
