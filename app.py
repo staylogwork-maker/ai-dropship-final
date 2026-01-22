@@ -829,7 +829,10 @@ def check_safety_filter(title, description=''):
     return True, 'Pass'
 
 def scrape_1688_search(keyword, max_results=50):
-    """Scrape 1688 search results using ScrapingAnt"""
+    """
+    Scrape 1688 search results using ScrapingAnt with browser rendering
+    CRITICAL: Includes fallback to test data if scraping fails
+    """
     app.logger.info(f'[1688 Scraping] ========================================')
     app.logger.info(f'[1688 Scraping] Starting search for keyword: {keyword}')
     app.logger.info(f'[1688 Scraping] Max results: {max_results}')
@@ -842,36 +845,70 @@ def scrape_1688_search(keyword, max_results=50):
     if api_key is None:
         app.logger.error('[1688 Scraping] [DEBUG] ScrapingAnt Key loaded from DB: NO (returned None)')
         app.logger.error('[1688 Scraping] ❌ ScrapingAnt API key not configured in database')
-        return {'error': 'ScrapingAnt API key not configured'}
+        app.logger.warning('[1688 Scraping] ⚠️ Falling back to TEST DATA')
+        return generate_fallback_test_data(keyword)
     
     api_key_stripped = api_key.strip() if isinstance(api_key, str) else ''
     
     if api_key_stripped == '':
         app.logger.error('[1688 Scraping] [DEBUG] ScrapingAnt Key loaded from DB: NO (empty string)')
         app.logger.error('[1688 Scraping] ❌ ScrapingAnt API key is empty')
-        return {'error': 'ScrapingAnt API key not configured'}
+        app.logger.warning('[1688 Scraping] ⚠️ Falling back to TEST DATA')
+        return generate_fallback_test_data(keyword)
     
     app.logger.info(f'[1688 Scraping] [DEBUG] ScrapingAnt Key loaded from DB: YES')
     app.logger.info(f'[1688 Scraping] ✅ API key found (length: {len(api_key_stripped)})')
     app.logger.info(f'[1688 Scraping] API key preview: {api_key_stripped[:10]}...')
     
-    search_url = f'https://s.1688.com/selloffer/offer_search.htm?keywords={keyword}'
+    # Encode keyword for URL
+    import urllib.parse
+    encoded_keyword = urllib.parse.quote(keyword)
+    search_url = f'https://s.1688.com/selloffer/offer_search.htm?keywords={encoded_keyword}'
     app.logger.info(f'[1688 Scraping] Search URL: {search_url}')
     
+    # CRITICAL: Enhanced ScrapingAnt parameters for browser rendering
     params = {
         'url': search_url,
-        'x-api-key': api_key,
-        'browser': 'true',
-        'cookies_persistence': 'true',
-        'return_page_source': 'true'
+        'x-api-key': api_key_stripped,
+        'browser': 'true',  # CRITICAL: Enable browser rendering (JS execution)
+        'return_page_source': 'true',  # Return full HTML after JS execution
+        'wait_for_selector': '.offer-list-row',  # Wait for product list to load
+        'wait_for_timeout': '10000',  # Wait up to 10 seconds
+        'proxy_country': 'CN',  # Use China proxy
+        'block_resource': 'image,stylesheet,media,font'  # Block unnecessary resources for speed
+    }
+    
+    # CRITICAL: Modern Chrome User-Agent to avoid bot detection
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
     
     try:
-        app.logger.info('[1688 Scraping] Sending request to ScrapingAnt API...')
-        response = requests.get('https://api.scrapingant.com/v2/general', params=params, timeout=60)
+        app.logger.info('[1688 Scraping] 🌐 Sending request to ScrapingAnt API with BROWSER MODE...')
+        app.logger.info('[1688 Scraping] Parameters: browser=true, wait_for_selector=.offer-list-row')
+        response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120)
         
         app.logger.info(f'[1688 Scraping] Response status: {response.status_code}')
         app.logger.info(f'[1688 Scraping] Response length: {len(response.text)} characters')
+        
+        # 🔍 CRITICAL: Log first 500 chars of HTML response for debugging
+        html_preview = response.text[:500]
+        app.logger.info(f'[1688 Scraping] 📄 HTML Preview (first 500 chars):')
+        app.logger.info(f'[1688 Scraping] {html_preview}')
+        app.logger.info(f'[1688 Scraping] ========================================')
+        
+        # Check if response looks like a block page
+        if '验证' in html_preview or 'blocked' in html_preview.lower() or 'captcha' in html_preview.lower() or '登录' in html_preview:
+            app.logger.warning('[1688 Scraping] ⚠️ WARNING: Response may be a block/login/captcha page!')
+            app.logger.warning('[1688 Scraping] Keywords detected: 验证/blocked/captcha/登录')
+            app.logger.warning('[1688 Scraping] ⚠️ Falling back to TEST DATA')
+            return generate_fallback_test_data(keyword)
+        
+        # Check if response is too short (likely error page)
+        if len(response.text) < 50000:
+            app.logger.warning(f'[1688 Scraping] ⚠️ Response too short ({len(response.text)} chars) - likely error page')
+            app.logger.warning('[1688 Scraping] ⚠️ Falling back to TEST DATA')
+            return generate_fallback_test_data(keyword)
         
         response.raise_for_status()
         
@@ -883,29 +920,82 @@ def scrape_1688_search(keyword, max_results=50):
         app.logger.info(f'[1688 Scraping] Parsed HTML. Looking for product cards...')
         
         products = []
-        # Simplified parsing - actual implementation would need real 1688 HTML structure
-        card_items = soup.find_all('div', class_='card-item')
-        app.logger.info(f'[1688 Scraping] Found {len(card_items)} card-item elements')
         
-        # Try alternative selectors if no card-item found
-        if len(card_items) == 0:
-            app.logger.warning('[1688 Scraping] No card-item elements found. Trying alternative selectors...')
-            # Try different common selectors
-            card_items = soup.find_all('div', class_='offer-item')
-            app.logger.info(f'[1688 Scraping] Found {len(card_items)} offer-item elements')
+        # Try multiple selectors for 1688 product listings
+        selectors = [
+            ('div', 'offer-list-row'),  # Most common
+            ('div', 'card-item'),
+            ('div', 'offer-item'),
+            ('div', 'sm-offer-item'),
+            ('div', 'sw-offer-item'),
+            ('div', 'item')
+        ]
+        
+        card_items = []
+        for tag, class_name in selectors:
+            card_items = soup.find_all(tag, class_=class_name)
+            app.logger.info(f'[1688 Scraping] Tried selector "{tag}.{class_name}": Found {len(card_items)} elements')
+            if len(card_items) > 0:
+                break
         
         if len(card_items) == 0:
-            card_items = soup.find_all('div', class_='item')
-            app.logger.info(f'[1688 Scraping] Found {len(card_items)} item elements')
+            app.logger.error('[1688 Scraping] ❌ No product elements found with any selector!')
+            app.logger.error('[1688 Scraping] This indicates 1688 is blocking or page structure changed')
+            app.logger.warning('[1688 Scraping] ⚠️ Falling back to TEST DATA')
+            return generate_fallback_test_data(keyword)
         
         for idx, item in enumerate(card_items[:max_results]):
             try:
+                # Try multiple ways to extract product info
+                url = ''
+                title = ''
+                price = 0
+                sales = 0
+                image = ''
+                
+                # Extract URL
+                link = item.find('a', href=True)
+                if link:
+                    url = link['href']
+                    if not url.startswith('http'):
+                        url = 'https:' + url if url.startswith('//') else 'https://detail.1688.com' + url
+                
+                # Extract title
+                title_elem = item.find('div', class_='title') or item.find('h3') or item.find('a', class_='title')
+                if title_elem:
+                    title = title_elem.get_text(strip=True)
+                
+                # Extract price
+                price_elem = item.find('span', class_='price') or item.find('div', class_='price') or item.find('span', string=re.compile(r'¥'))
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True).replace('¥', '').replace(',', '').replace(' ', '')
+                    try:
+                        price = float(re.findall(r'\d+\.?\d*', price_text)[0])
+                    except:
+                        price = 0
+                
+                # Extract sales
+                sales_elem = item.find('span', class_='sales') or item.find('div', class_='sales')
+                if sales_elem:
+                    sales_text = sales_elem.get_text(strip=True)
+                    try:
+                        sales = int(re.findall(r'\d+', sales_text)[0])
+                    except:
+                        sales = 0
+                
+                # Extract image
+                img = item.find('img')
+                if img:
+                    image = img.get('src', '') or img.get('data-src', '') or img.get('data-lazy-src', '')
+                    if image and not image.startswith('http'):
+                        image = 'https:' + image if image.startswith('//') else ''
+                
                 product = {
-                    'url': item.find('a')['href'] if item.find('a') else '',
-                    'title': item.find('h3').get_text(strip=True) if item.find('h3') else '',
-                    'price': float(item.find('span', class_='price').get_text(strip=True).replace('¥', '')) if item.find('span', class_='price') else 0,
-                    'sales': int(item.find('span', class_='sales').get_text(strip=True).replace('销', '')) if item.find('span', class_='sales') else 0,
-                    'image': item.find('img')['src'] if item.find('img') else ''
+                    'url': url,
+                    'title': title,
+                    'price': price,
+                    'sales': sales,
+                    'image': image or 'https://via.placeholder.com/300x300?text=Product'
                 }
                 
                 # Only add if we have at least title and price
@@ -918,15 +1008,110 @@ def scrape_1688_search(keyword, max_results=50):
                 app.logger.warning(f'[1688 Scraping] Failed to parse product {idx+1}: {str(e)}')
                 continue
         
+        if len(products) == 0:
+            app.logger.error('[1688 Scraping] ❌ Parsing succeeded but extracted 0 products!')
+            app.logger.error('[1688 Scraping] This means selectors need updating or 1688 changed structure')
+            app.logger.warning('[1688 Scraping] ⚠️ Falling back to TEST DATA')
+            return generate_fallback_test_data(keyword)
+        
         app.logger.info(f'[1688 Scraping] ✅ Successfully parsed {len(products)} products')
         return {'products': products, 'count': len(products)}
     
+    except requests.exceptions.Timeout:
+        app.logger.error('[1688 Scraping] ❌ Request timeout (120s)')
+        app.logger.warning('[1688 Scraping] ⚠️ Falling back to TEST DATA')
+        return generate_fallback_test_data(keyword)
     except requests.exceptions.RequestException as e:
         error_msg = f'Request failed: {str(e)}'
         app.logger.error(f'[1688 Scraping] ❌ {error_msg}')
-        return {'error': error_msg}
+        app.logger.warning('[1688 Scraping] ⚠️ Falling back to TEST DATA')
+        return generate_fallback_test_data(keyword)
     except Exception as e:
         error_msg = f'Parsing failed: {str(e)}'
+        app.logger.error(f'[1688 Scraping] ❌ {error_msg}')
+        app.logger.exception(e)
+        app.logger.warning('[1688 Scraping] ⚠️ Falling back to TEST DATA')
+        return generate_fallback_test_data(keyword)
+
+def generate_fallback_test_data(keyword):
+    """
+    Generate realistic test data as fallback when scraping fails
+    CRITICAL: Ensures system always shows results to user
+    """
+    import random
+    
+    app.logger.warning('[TEST DATA] ⚠️ 크롤링 실패: 테스트 데이터를 표시합니다')
+    app.logger.info('[TEST DATA] Generating realistic fallback test products')
+    
+    # Predefined realistic test products (Korean winter/trending items)
+    base_products = [
+        {
+            'category': '전기담요',
+            'variants': ['수면용', '사무실용', '차량용', '휴대용', '대형'],
+            'price_range': (30, 80)
+        },
+        {
+            'category': '가습기',
+            'variants': ['초음파', '가열식', '복합식', '미니', '대용량'],
+            'price_range': (25, 90)
+        },
+        {
+            'category': '블루투스 이어폰',
+            'variants': ['무선', 'ANC', '스포츠', '게이밍', '프리미엄'],
+            'price_range': (15, 120)
+        },
+        {
+            'category': '무선충전기',
+            'variants': ['고속', '스탠드형', '멀티', '차량용', '접이식'],
+            'price_range': (10, 45)
+        },
+        {
+            'category': 'LED 조명',
+            'variants': ['무드등', '스탠드', '스마트', 'USB', '침실용'],
+            'price_range': (8, 60)
+        },
+        {
+            'category': '휴대폰 거치대',
+            'variants': ['차량용', '책상용', '침대용', '삼각대', '자석'],
+            'price_range': (5, 30)
+        },
+        {
+            'category': '보조배터리',
+            'variants': ['고속충전', '대용량', '소형', '무선', '태양광'],
+            'price_range': (20, 85)
+        },
+        {
+            'category': '스마트워치',
+            'variants': ['운동용', '건강측정', '방수', '저렴이', '프리미엄'],
+            'price_range': (25, 150)
+        }
+    ]
+    
+    products = []
+    num_products = min(10, max_results) if 'max_results' in locals() else 10
+    
+    for i in range(num_products):
+        # Randomly select a product category
+        base = random.choice(base_products)
+        variant = random.choice(base['variants'])
+        
+        # Generate realistic product
+        price = round(random.uniform(base['price_range'][0], base['price_range'][1]), 2)
+        
+        product = {
+            'url': f'https://detail.1688.com/offer/{9000000 + random.randint(1000, 99999)}.html',
+            'title': f'{keyword} {base["category"]} {variant} 고품질 무료배송 도매',
+            'price': price,
+            'sales': random.randint(500, 15000),
+            'image': f'https://via.placeholder.com/300x300?text={base["category"]}'
+        }
+        products.append(product)
+        app.logger.info(f'[TEST DATA] Product {i+1}: {product["title"][:50]} - ¥{product["price"]}')
+    
+    app.logger.warning(f'[TEST DATA] ✅ Generated {len(products)} realistic test products')
+    app.logger.warning('[TEST DATA] ⚠️ 이것은 테스트 데이터입니다 - 실제 1688 상품이 아닙니다!')
+    
+    return {'products': products, 'count': len(products), 'is_test_data': True}
         app.logger.error(f'[1688 Scraping] ❌ {error_msg}')
         app.logger.exception(e)
         return {'error': error_msg}
@@ -1074,19 +1259,30 @@ def execute_smart_sourcing(keyword, use_test_data=False):
         # Real scraping
         results = scrape_1688_search(keyword, max_results=50)
         
-        if 'error' in results:
+        # Check if test data was returned (has is_test_data flag)
+        if results.get('is_test_data', False):
+            app.logger.warning('[Smart Sniper] ⚠️ Using FALLBACK TEST DATA from scraping function')
+            products = results.get('products', [])
+            log_activity('sourcing', f'⚠️ Scraping failed - Using {len(products)} TEST items', 'warning')
+        elif 'error' in results:
+            # Old error handling (shouldn't happen now, but keep for safety)
             error_msg = results['error']
             app.logger.error(f'[Smart Sniper] Scraping error: {error_msg}')
             log_activity('sourcing', f'❌ Search failed: {error_msg}', 'error')
             
-            # Fallback to test data if scraping fails
-            app.logger.warning('[Smart Sniper] Falling back to TEST DATA due to scraping failure')
+            # This path shouldn't be reached anymore, but keep as safety net
+            app.logger.warning('[Smart Sniper] Falling back to TEST DATA due to error')
             products = generate_test_products(keyword, count=10)
             log_activity('sourcing', f'Using {len(products)} TEST items as fallback', 'warning')
         else:
             products = results.get('products', [])
             app.logger.info(f'[Smart Sniper] Raw scraping result: {len(products)} products')
-            log_activity('sourcing', f'Found {len(products)} items from listing', 'success')
+            
+            # Check if it's real data or test data
+            if results.get('is_test_data', False):
+                log_activity('sourcing', f'⚠️ Using {len(products)} TEST items (scraping failed)', 'warning')
+            else:
+                log_activity('sourcing', f'Found {len(products)} items from listing', 'success')
     
     # 📊 STAGE 1: Record scraped count
     stage_stats['stage1_scraped'] = len(products)
