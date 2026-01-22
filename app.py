@@ -34,8 +34,21 @@ from logging.handlers import RotatingFileHandler
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, 'dropship.db')
 
-print(f"[INIT] Database path: {DB_PATH}")
+# CRITICAL: Print and log DB path at module load time
+print(f"[INIT] ========================================")
+print(f"[INIT] Module: {__file__}")
 print(f"[INIT] Base directory: {BASE_DIR}")
+print(f"[INIT] Database path (ABSOLUTE): {DB_PATH}")
+print(f"[INIT] Database exists: {os.path.exists(DB_PATH)}")
+if os.path.exists(DB_PATH):
+    print(f"[INIT] Database size: {os.path.getsize(DB_PATH)} bytes")
+print(f"[INIT] ========================================")
+
+# Verify DB path is absolute
+if not os.path.isabs(DB_PATH):
+    raise RuntimeError(f"CRITICAL: DB_PATH must be absolute! Got: {DB_PATH}")
+
+print(f"[INIT] ✅ DB_PATH verification passed: {DB_PATH}")
 
 # ============================================================================
 # CRITICAL: AUTO DATABASE INITIALIZATION (BEFORE FLASK APP)
@@ -429,6 +442,124 @@ def set_config(key, value):
     ''', (key, value, value))
     conn.commit()
     conn.close()
+
+def system_check_critical_configs():
+    """
+    CRITICAL: System-wide configuration verification
+    This function MUST be called at the start of any critical operation
+    to ensure all required API keys and configs are loaded from DB.
+    
+    Returns: dict with status and config values
+    Raises: RuntimeError if critical configs are missing
+    """
+    app.logger.info('[SYSTEM-CHECK] ========================================')
+    app.logger.info(f'[SYSTEM-CHECK] 🔍 DB Path (ABSOLUTE): {DB_PATH}')
+    app.logger.info(f'[SYSTEM-CHECK] DB Path is absolute: {os.path.isabs(DB_PATH)}')
+    app.logger.info(f'[SYSTEM-CHECK] DB Exists: {os.path.exists(DB_PATH)}')
+    
+    if not os.path.exists(DB_PATH):
+        error_msg = f'CRITICAL: Database file not found at {DB_PATH}'
+        app.logger.error(f'[SYSTEM-CHECK] ❌ {error_msg}')
+        raise RuntimeError(error_msg)
+    
+    app.logger.info(f'[SYSTEM-CHECK] DB Size: {os.path.getsize(DB_PATH)} bytes')
+    
+    # Load critical configs from DB
+    openai_key = get_config('openai_api_key', '')
+    scrapingant_key = get_config('scrapingant_api_key', '')
+    target_margin = get_config('target_margin_rate', '30')
+    cny_rate = get_config('cny_exchange_rate', '190')
+    
+    # Log first 4 characters of API keys (masked)
+    openai_preview = openai_key[:4] + '****' if len(openai_key) >= 4 else 'EMPTY'
+    scrapingant_preview = scrapingant_key[:4] + '****' if len(scrapingant_key) >= 4 else 'EMPTY'
+    
+    app.logger.info(f'[SYSTEM-CHECK] 🔑 OpenAI API Key: {openai_preview} (length: {len(openai_key)})')
+    app.logger.info(f'[SYSTEM-CHECK] 🔑 ScrapingAnt API Key: {scrapingant_preview} (length: {len(scrapingant_key)})')
+    app.logger.info(f'[SYSTEM-CHECK] 💰 Target Margin: {target_margin}%')
+    app.logger.info(f'[SYSTEM-CHECK] 💱 CNY Exchange Rate: {cny_rate}')
+    
+    # Check if critical keys are empty
+    missing_keys = []
+    if not openai_key or openai_key.strip() == '':
+        missing_keys.append('openai_api_key')
+        app.logger.error('[SYSTEM-CHECK] ❌ OpenAI API key is EMPTY or NOT CONFIGURED')
+    
+    if not scrapingant_key or scrapingant_key.strip() == '':
+        missing_keys.append('scrapingant_api_key')
+        app.logger.error('[SYSTEM-CHECK] ❌ ScrapingAnt API key is EMPTY or NOT CONFIGURED')
+    
+    if missing_keys:
+        error_msg = f'CRITICAL: Missing required API keys in DB: {missing_keys}'
+        app.logger.error(f'[SYSTEM-CHECK] ❌ {error_msg}')
+        app.logger.error('[SYSTEM-CHECK] ❌ Please configure these keys in the Settings page!')
+        app.logger.info('[SYSTEM-CHECK] ========================================')
+        raise RuntimeError(error_msg)
+    
+    app.logger.info('[SYSTEM-CHECK] ✅ All critical configurations verified successfully')
+    app.logger.info('[SYSTEM-CHECK] ========================================')
+    
+    return {
+        'success': True,
+        'openai_key_preview': openai_preview,
+        'scrapingant_key_preview': scrapingant_preview,
+        'target_margin': target_margin,
+        'cny_rate': cny_rate
+    }
+    
+    # Check critical API keys
+    critical_keys = {
+        'scrapingant_api_key': 'ScrapingAnt API Key',
+        'openai_api_key': 'OpenAI API Key'
+    }
+    
+    config_status = {}
+    missing_keys = []
+    
+    for key, display_name in critical_keys.items():
+        app.logger.info(f'[SYSTEM-CHECK] Fetching {display_name} from DB...')
+        
+        # Direct DB query to ensure we're reading from the correct database
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute('SELECT value FROM config WHERE key = ?', (key,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row and row['value'] and row['value'].strip():
+            value = row['value'].strip()
+            # Show first 4 chars for verification
+            preview = f"{value[:4]}..." if len(value) > 4 else "[TOO_SHORT]"
+            config_status[key] = {
+                'configured': True,
+                'length': len(value),
+                'preview': preview
+            }
+            app.logger.info(f'[SYSTEM-CHECK] ✅ {display_name}: YES (length: {len(value)}, preview: {preview})')
+        else:
+            config_status[key] = {
+                'configured': False,
+                'length': 0,
+                'preview': None
+            }
+            missing_keys.append(display_name)
+            app.logger.error(f'[SYSTEM-CHECK] ❌ {display_name}: NOT CONFIGURED')
+    
+    # Check other important configs
+    other_configs = ['target_margin_rate', 'cny_exchange_rate']
+    for key in other_configs:
+        value = get_config(key)
+        config_status[key] = value
+        app.logger.info(f'[SYSTEM-CHECK] {key}: {value}')
+    
+    app.logger.info('[SYSTEM-CHECK] ========================================')
+    
+    return {
+        'success': len(missing_keys) == 0,
+        'missing_keys': missing_keys,
+        'configs': config_status
+    }
 
 # ============================================================================
 # USER MODEL FOR FLASK-LOGIN
@@ -873,20 +1004,38 @@ def execute_smart_sourcing(keyword, use_test_data=False):
     app.logger.info(f'[Smart Sniper] Executing unified sourcing for keyword: {keyword}')
     app.logger.info(f'[Smart Sniper] Use test data: {use_test_data}')
     
-    # CRITICAL: Verify DB configuration is accessible
-    app.logger.info('[Smart Sniper] [DEBUG] Pre-flight check: Verifying DB config access...')
+    # ========================================================================
+    # CRITICAL: SYSTEM CHECK - Verify DB and load configurations
+    # ========================================================================
+    try:
+        app.logger.info('[Smart Sniper] 🔍 Running SYSTEM-CHECK before sourcing...')
+        system_config = system_check_critical_configs()
+        app.logger.info(f'[Smart Sniper] ✅ System check passed: {system_config}')
+    except RuntimeError as e:
+        app.logger.error(f'[Smart Sniper] ❌ SYSTEM CHECK FAILED: {str(e)}')
+        log_activity('sourcing', f'❌ System check failed: {str(e)}', 'error')
+        return {
+            'success': False,
+            'error': f'System configuration error: {str(e)}',
+            'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0}
+        }
     
-    # Test config loading
-    test_api_key = get_config('scrapingant_api_key')
-    test_target_margin = get_config('target_margin_rate', 30)
-    test_exchange_rate = get_config('cny_exchange_rate', 190)
+    # ========================================================================
+    # Load configs from DB (NEVER use global variables)
+    # ========================================================================
+    scrapingant_key = get_config('scrapingant_api_key', '')
+    openai_key = get_config('openai_api_key', '')
+    target_margin_rate = get_config('target_margin_rate', 30)
+    cny_exchange_rate = get_config('cny_exchange_rate', 190)
     
-    app.logger.info(f'[Smart Sniper] [DEBUG] ScrapingAnt key from DB: {"YES" if test_api_key else "NO"}')
-    app.logger.info(f'[Smart Sniper] [DEBUG] Target margin from DB: {test_target_margin}')
-    app.logger.info(f'[Smart Sniper] [DEBUG] Exchange rate from DB: {test_exchange_rate}')
+    app.logger.info('[Smart Sniper] 📋 Config loaded from DB:')
+    app.logger.info(f'  - ScrapingAnt key: {scrapingant_key[:4]}**** (len: {len(scrapingant_key)})')
+    app.logger.info(f'  - OpenAI key: {openai_key[:4]}**** (len: {len(openai_key)})')
+    app.logger.info(f'  - Target margin: {target_margin_rate}%')
+    app.logger.info(f'  - CNY rate: {cny_exchange_rate}')
     
-    if not test_api_key and not use_test_data:
-        app.logger.error('[Smart Sniper] ❌ CRITICAL: ScrapingAnt API key not configured in DB')
+    if not scrapingant_key and not use_test_data:
+        app.logger.error('[Smart Sniper] ❌ CRITICAL: ScrapingAnt API key is EMPTY after DB load')
         app.logger.error('[Smart Sniper] Please configure API key in Settings page')
         log_activity('sourcing', '❌ ScrapingAnt API key not configured', 'error')
         return {

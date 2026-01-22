@@ -7,9 +7,25 @@ Securely change admin password with bcrypt hashing
 import sqlite3
 import getpass
 import sys
+import os
 from werkzeug.security import generate_password_hash
 
-DB_PATH = 'dropship.db'
+# ============================================================================
+# CRITICAL: Use absolute path for DB (same as app.py)
+# ============================================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, 'dropship.db')
+
+print(f"[CHANGE_PASSWORD] ========================================")
+print(f"[CHANGE_PASSWORD] Script: {__file__}")
+print(f"[CHANGE_PASSWORD] Base directory: {BASE_DIR}")
+print(f"[CHANGE_PASSWORD] Database path (ABSOLUTE): {DB_PATH}")
+print(f"[CHANGE_PASSWORD] Database exists: {os.path.exists(DB_PATH)}")
+print(f"[CHANGE_PASSWORD] ========================================")
+
+# Verify DB path is absolute
+if not os.path.isabs(DB_PATH):
+    raise RuntimeError(f"CRITICAL: DB_PATH must be absolute! Got: {DB_PATH}")
 
 def change_password():
     """Change admin password securely"""

@@ -8,7 +8,22 @@ import sqlite3
 import os
 from werkzeug.security import generate_password_hash
 
-DB_PATH = 'dropship.db'
+# ============================================================================
+# CRITICAL: Use absolute path for DB (same as app.py)
+# ============================================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, 'dropship.db')
+
+print(f"[INIT_DB] ========================================")
+print(f"[INIT_DB] Script: {__file__}")
+print(f"[INIT_DB] Base directory: {BASE_DIR}")
+print(f"[INIT_DB] Database path (ABSOLUTE): {DB_PATH}")
+print(f"[INIT_DB] Database exists: {os.path.exists(DB_PATH)}")
+print(f"[INIT_DB] ========================================")
+
+# Verify DB path is absolute
+if not os.path.isabs(DB_PATH):
+    raise RuntimeError(f"CRITICAL: DB_PATH must be absolute! Got: {DB_PATH}")
 
 def init_database():
     """Initialize SQLite database with all required tables"""
