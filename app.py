@@ -528,10 +528,14 @@ def log_activity(action_type, description, status='success', details=None):
     """Log system activity with KST timestamp"""
     conn = get_db()
     cursor = conn.cursor()
+    
+    # 🚀 FIX: Explicitly set KST timestamp instead of relying on DEFAULT
+    kst_now = get_kst_now().strftime('%Y-%m-%d %H:%M:%S')
+    
     cursor.execute('''
-        INSERT INTO activity_logs (action_type, description, status, details_json)
-        VALUES (?, ?, ?, ?)
-    ''', (action_type, description, status, json.dumps(details) if details else None))
+        INSERT INTO activity_logs (action_type, description, status, details_json, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (action_type, description, status, json.dumps(details) if details else None, kst_now))
     conn.commit()
     conn.close()
 
@@ -959,85 +963,8 @@ def scrape_1688_search(keyword, max_results=50):
     app.logger.warning(f'[DEPRECATED] scrape_1688_search called - redirecting to hybrid search')
     return search_integrated_hybrid(keyword, max_results)
 
-def generate_fallback_test_data(keyword):
-    """
-    Generate realistic test data as fallback when scraping fails
-    CRITICAL: Ensures system always shows results to user
-    """
-    import random
-    
-    app.logger.warning('[TEST DATA] ⚠️ 크롤링 실패: 테스트 데이터를 표시합니다')
-    app.logger.info('[TEST DATA] Generating realistic fallback test products')
-    
-    # Predefined realistic test products (Korean winter/trending items)
-    base_products = [
-        {
-            'category': '전기담요',
-            'variants': ['수면용', '사무실용', '차량용', '휴대용', '대형'],
-            'price_range': (30, 80)
-        },
-        {
-            'category': '가습기',
-            'variants': ['초음파', '가열식', '복합식', '미니', '대용량'],
-            'price_range': (25, 90)
-        },
-        {
-            'category': '블루투스 이어폰',
-            'variants': ['무선', 'ANC', '스포츠', '게이밍', '프리미엄'],
-            'price_range': (15, 120)
-        },
-        {
-            'category': '무선충전기',
-            'variants': ['고속', '스탠드형', '멀티', '차량용', '접이식'],
-            'price_range': (10, 45)
-        },
-        {
-            'category': 'LED 조명',
-            'variants': ['무드등', '스탠드', '스마트', 'USB', '침실용'],
-            'price_range': (8, 60)
-        },
-        {
-            'category': '휴대폰 거치대',
-            'variants': ['차량용', '책상용', '침대용', '삼각대', '자석'],
-            'price_range': (5, 30)
-        },
-        {
-            'category': '보조배터리',
-            'variants': ['고속충전', '대용량', '소형', '무선', '태양광'],
-            'price_range': (20, 85)
-        },
-        {
-            'category': '스마트워치',
-            'variants': ['운동용', '건강측정', '방수', '저렴이', '프리미엄'],
-            'price_range': (25, 150)
-        }
-    ]
-    
-    products = []
-    num_products = min(10, max_results) if 'max_results' in locals() else 10
-    
-    for i in range(num_products):
-        # Randomly select a product category
-        base = random.choice(base_products)
-        variant = random.choice(base['variants'])
-        
-        # Generate realistic product
-        price = round(random.uniform(base['price_range'][0], base['price_range'][1]), 2)
-        
-        product = {
-            'url': f'https://www.alibaba.com/product-detail/{9000000 + random.randint(1000, 99999)}.html',
-            'title': f'{keyword} {base["category"]} {variant} 고품질 무료배송 도매',
-            'price': price,
-            'sales': random.randint(500, 15000),
-            'image': f'https://via.placeholder.com/300x300?text={base["category"]}'
-        }
-        products.append(product)
-        app.logger.info(f'[TEST DATA] Product {i+1}: {product["title"][:50]} - ¥{product["price"]}')
-    
-    app.logger.warning(f'[TEST DATA] ✅ Generated {len(products)} realistic test products')
-    app.logger.warning('[TEST DATA] ⚠️ 이것은 테스트 데이터입니다 - 실제 Alibaba/AliExpress 상품이 아닙니다!')
-    
-    return {'products': products, 'count': len(products), 'is_test_data': True}
+# TEST DATA FUNCTIONS COMPLETELY REMOVED
+# No fallback test data - fail explicitly if scraping fails
 
 def parse_smart_price(price_text):
     """
@@ -1581,27 +1508,9 @@ def analyze_product_profitability(price_cny):
         'exchange_rate': exchange_rate
     }
 
-def generate_test_products(keyword, count=5):
-    """Generate test products for development/testing when scraping fails"""
-    import random
-    
-    app.logger.warning(f'[Test Data] Generating {count} test products for keyword: {keyword}')
-    
-    test_products = []
-    for i in range(count):
-        price = random.uniform(10, 200)
-        test_products.append({
-            'url': f'https://www.alibaba.com/product/{1000000 + i}.html',
-            'title': f'{keyword} 테스트상품 {i+1} - 고품질 무료배송',
-            'price': round(price, 2),
-            'sales': random.randint(100, 5000),
-            'image': 'https://via.placeholder.com/300x300?text=Test+Product'
-        })
-    
-    app.logger.info(f'[Test Data] ✅ Generated {len(test_products)} test products')
-    return test_products
+# generate_test_products() DELETED - No mock data allowed
 
-def execute_smart_sourcing(keyword, use_test_data=False):
+def execute_smart_sourcing(keyword):
     """
     Unified [Smart Sniper] engine for both keyword search and AI discovery
     
@@ -1616,8 +1525,8 @@ def execute_smart_sourcing(keyword, use_test_data=False):
     Returns: dict with 'success', 'products' (Top 3 only), 'stats', 'stage_stats'
     """
     app.logger.info(f'[Smart Sniper] ========================================')
-    app.logger.info(f'[Smart Sniper] Executing unified sourcing for keyword: {keyword}')
-    app.logger.info(f'[Smart Sniper] Use test data: {use_test_data}')
+    app.logger.info(f'[Smart Sniper] Executing REAL sourcing for keyword: {keyword}')
+    app.logger.info(f'[Smart Sniper] NO TEST DATA - Only real Alibaba/AliExpress products')
     
     # Initialize stage-by-stage tracking for UI feedback
     stage_stats = {
@@ -1665,8 +1574,8 @@ def execute_smart_sourcing(keyword, use_test_data=False):
     app.logger.info(f'  - CNY rate: {cny_exchange_rate}')
     app.logger.info(f'  - 🐛 DEBUG MODE (Ignore Filters): {debug_mode_enabled}')
     
-    if not scrapingant_key and not use_test_data:
-        app.logger.error('[Smart Sniper] ❌ CRITICAL: ScrapingAnt API key is EMPTY after DB load')
+    if not scrapingant_key:
+        app.logger.error('[Smart Sniper] ❌ CRITICAL: ScrapingAnt API key is EMPTY')
         app.logger.error('[Smart Sniper] Please configure API key in Settings page')
         log_activity('sourcing', '❌ ScrapingAnt API key not configured', 'error')
         return {
@@ -1676,54 +1585,38 @@ def execute_smart_sourcing(keyword, use_test_data=False):
             'stage_stats': stage_stats
         }
     
-    # Step 1: 🚀 HYBRID Search (Alibaba + AliExpress)
+    # Step 1: 🚀 HYBRID Search (Alibaba + AliExpress) - REAL DATA ONLY
     log_activity('sourcing', f'Step 1/5: 🚀 HYBRID Search (Alibaba + AliExpress) for "{keyword}"', 'in_progress')
     
-    if use_test_data:
-        # Use test data for development/debugging
-        app.logger.warning('[Smart Sniper] Using TEST DATA instead of real scraping')
-        products = generate_test_products(keyword, count=10)
-        log_activity('sourcing', f'Found {len(products)} TEST items (development mode)', 'warning')
-    else:
-        # 🚀 Real HYBRID scraping (Alibaba + AliExpress)
-        results = search_integrated_hybrid(keyword, max_results=50)
-        
-        # Check if test data was returned (has is_test_data flag)
-        if results.get('is_test_data', False):
-            app.logger.warning('[Smart Sniper] ⚠️ Using FALLBACK TEST DATA from scraping function')
-            products = results.get('products', [])
-            log_activity('sourcing', f'⚠️ Scraping failed - Using {len(products)} TEST items', 'warning')
-        elif 'error' in results:
-            # Old error handling (shouldn't happen now, but keep for safety)
-            error_msg = results['error']
-            app.logger.error(f'[Smart Sniper] Scraping error: {error_msg}')
-            log_activity('sourcing', f'❌ Search failed: {error_msg}', 'error')
-            
-            # This path shouldn't be reached anymore, but keep as safety net
-            app.logger.warning('[Smart Sniper] Falling back to TEST DATA due to error')
-            products = generate_test_products(keyword, count=10)
-            log_activity('sourcing', f'Using {len(products)} TEST items as fallback', 'warning')
-        else:
-            products = results.get('products', [])
-            app.logger.info(f'[Smart Sniper] 🚀 HYBRID scraping result: {len(products)} products from Alibaba + AliExpress')
-            
-            # Check if it's real data or test data
-            if results.get('is_test_data', False):
-                log_activity('sourcing', f'⚠️ Using {len(products)} TEST items (scraping failed)', 'warning')
-            else:
-                log_activity('sourcing', f'Found {len(products)} items from listing', 'success')
+    # 🚀 Real HYBRID scraping (Alibaba + AliExpress) - NO TEST DATA
+    results = search_integrated_hybrid(keyword, max_results=50)
+    
+    if 'error' in results:
+        error_msg = results['error']
+        app.logger.error(f'[Smart Sniper] ❌ Scraping FAILED: {error_msg}')
+        log_activity('sourcing', f'❌ Search failed: {error_msg}', 'error')
+        return {
+            'success': False,
+            'error': f'Scraping failed: {error_msg}',
+            'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0},
+            'stage_stats': stage_stats
+        }
+    
+    products = results.get('products', [])
+    app.logger.info(f'[Smart Sniper] 🚀 HYBRID scraping result: {len(products)} REAL products from Alibaba + AliExpress')
+    log_activity('sourcing', f'✅ Found {len(products)} real items from Alibaba/AliExpress', 'success')
     
     # 📊 STAGE 1: Record scraped count
     stage_stats['stage1_scraped'] = len(products)
     app.logger.info(f'[Smart Sniper] 📊 STAGE 1 COMPLETE: {len(products)} products scraped')
     
-    # Critical check: if still no products, cannot continue
+    # Critical check: if no products, FAIL EXPLICITLY
     if len(products) == 0:
-        app.logger.error('[Smart Sniper] ❌ CRITICAL: No products found after scraping AND test data fallback')
-        log_activity('sourcing', '❌ No products found - cannot continue', 'error')
+        app.logger.error('[Smart Sniper] ❌ CRITICAL: Zero products found from Alibaba/AliExpress')
+        log_activity('sourcing', '❌ No products found - scraping failed', 'error')
         return {
             'success': False,
-            'error': 'No products found. Please check ScrapingAnt API or try different keyword.',
+            'error': 'No products found. ScrapingAnt may be blocked or keyword has no results.',
             'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0},
             'stage_stats': stage_stats
         }
@@ -1937,10 +1830,9 @@ def start_sourcing():
     data = request.json
     user_keyword = data.get('keyword', '')
     mode = data.get('mode', 'direct')  # 'direct' or 'ai_discovery'
-    use_test_data = data.get('use_test_data', False)  # NEW: test data mode
     
     app.logger.info(f'=== Sourcing Started by {current_user.username} ===')
-    app.logger.info(f'Mode: {mode}, User keyword: {user_keyword}, Test data: {use_test_data}')
+    app.logger.info(f'Mode: {mode}, User keyword: {user_keyword}')
     
     # Determine target keyword based on mode
     if mode == 'ai_discovery':
@@ -1972,8 +1864,8 @@ def start_sourcing():
         blue_ocean_data = None
         log_activity('sourcing', f'📌 Direct search mode: "{target_keyword}"', 'info')
     
-    # Execute unified Smart Sniper engine
-    result = execute_smart_sourcing(target_keyword, use_test_data=use_test_data)
+    # Execute unified Smart Sniper engine - REAL DATA ONLY
+    result = execute_smart_sourcing(target_keyword)
     
     if not result['success']:
         return jsonify({'error': result.get('error', 'Unknown error'), 'stage_stats': result.get('stage_stats', {})}), 500
