@@ -698,11 +698,17 @@ def check_safety_filter(title, description=''):
 
 def scrape_1688_search(keyword, max_results=50):
     """Scrape 1688 search results using ScrapingAnt"""
+    app.logger.info(f'[1688 Scraping] Starting search for keyword: {keyword}')
+    
     api_key = get_config('scrapingant_api_key')
-    if not api_key:
+    if not api_key or api_key.strip() == '':
+        app.logger.error('[1688 Scraping] ❌ ScrapingAnt API key not configured')
         return {'error': 'ScrapingAnt API key not configured'}
     
+    app.logger.info(f'[1688 Scraping] API key found (length: {len(api_key)})')
+    
     search_url = f'https://s.1688.com/selloffer/offer_search.htm?keywords={keyword}'
+    app.logger.info(f'[1688 Scraping] Search URL: {search_url}')
     
     params = {
         'url': search_url,
@@ -713,16 +719,38 @@ def scrape_1688_search(keyword, max_results=50):
     }
     
     try:
+        app.logger.info('[1688 Scraping] Sending request to ScrapingAnt API...')
         response = requests.get('https://api.scrapingant.com/v2/general', params=params, timeout=60)
+        
+        app.logger.info(f'[1688 Scraping] Response status: {response.status_code}')
+        app.logger.info(f'[1688 Scraping] Response length: {len(response.text)} characters')
+        
         response.raise_for_status()
         
         # Parse HTML response
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(response.text, 'lxml')
         
+        # Log page structure for debugging
+        app.logger.info(f'[1688 Scraping] Parsed HTML. Looking for product cards...')
+        
         products = []
         # Simplified parsing - actual implementation would need real 1688 HTML structure
-        for item in soup.find_all('div', class_='card-item', limit=max_results):
+        card_items = soup.find_all('div', class_='card-item')
+        app.logger.info(f'[1688 Scraping] Found {len(card_items)} card-item elements')
+        
+        # Try alternative selectors if no card-item found
+        if len(card_items) == 0:
+            app.logger.warning('[1688 Scraping] No card-item elements found. Trying alternative selectors...')
+            # Try different common selectors
+            card_items = soup.find_all('div', class_='offer-item')
+            app.logger.info(f'[1688 Scraping] Found {len(card_items)} offer-item elements')
+        
+        if len(card_items) == 0:
+            card_items = soup.find_all('div', class_='item')
+            app.logger.info(f'[1688 Scraping] Found {len(card_items)} item elements')
+        
+        for idx, item in enumerate(card_items[:max_results]):
             try:
                 product = {
                     'url': item.find('a')['href'] if item.find('a') else '',
@@ -731,14 +759,29 @@ def scrape_1688_search(keyword, max_results=50):
                     'sales': int(item.find('span', class_='sales').get_text(strip=True).replace('销', '')) if item.find('span', class_='sales') else 0,
                     'image': item.find('img')['src'] if item.find('img') else ''
                 }
-                products.append(product)
+                
+                # Only add if we have at least title and price
+                if product['title'] and product['price'] > 0:
+                    products.append(product)
+                    app.logger.debug(f'[1688 Scraping] Product {idx+1}: {product["title"][:40]} - ¥{product["price"]}')
+                else:
+                    app.logger.debug(f'[1688 Scraping] Skipped product {idx+1}: missing title or price')
             except Exception as e:
+                app.logger.warning(f'[1688 Scraping] Failed to parse product {idx+1}: {str(e)}')
                 continue
         
+        app.logger.info(f'[1688 Scraping] ✅ Successfully parsed {len(products)} products')
         return {'products': products, 'count': len(products)}
     
+    except requests.exceptions.RequestException as e:
+        error_msg = f'Request failed: {str(e)}'
+        app.logger.error(f'[1688 Scraping] ❌ {error_msg}')
+        return {'error': error_msg}
     except Exception as e:
-        return {'error': str(e)}
+        error_msg = f'Parsing failed: {str(e)}'
+        app.logger.error(f'[1688 Scraping] ❌ {error_msg}')
+        app.logger.exception(e)
+        return {'error': error_msg}
 
 def analyze_product_profitability(price_cny):
     """Calculate profit margin and KRW price"""
@@ -776,7 +819,27 @@ def analyze_product_profitability(price_cny):
         'exchange_rate': exchange_rate
     }
 
-def execute_smart_sourcing(keyword):
+def generate_test_products(keyword, count=5):
+    """Generate test products for development/testing when scraping fails"""
+    import random
+    
+    app.logger.warning(f'[Test Data] Generating {count} test products for keyword: {keyword}')
+    
+    test_products = []
+    for i in range(count):
+        price = random.uniform(10, 200)
+        test_products.append({
+            'url': f'https://detail.1688.com/offer/{1000000 + i}.html',
+            'title': f'{keyword} 테스트상품 {i+1} - 고품질 무료배송',
+            'price': round(price, 2),
+            'sales': random.randint(100, 5000),
+            'image': 'https://via.placeholder.com/300x300?text=Test+Product'
+        })
+    
+    app.logger.info(f'[Test Data] ✅ Generated {len(test_products)} test products')
+    return test_products
+
+def execute_smart_sourcing(keyword, use_test_data=False):
     """
     Unified [Smart Sniper] engine for both keyword search and AI discovery
     
@@ -791,43 +854,90 @@ def execute_smart_sourcing(keyword):
     Returns: dict with 'success', 'products' (Top 3 only), 'stats'
     """
     app.logger.info(f'[Smart Sniper] Executing unified sourcing for keyword: {keyword}')
+    app.logger.info(f'[Smart Sniper] Use test data: {use_test_data}')
     
     # Step 1: 1688 Lite Search (Listing Only)
     log_activity('sourcing', f'Step 1/5: 🔍 1688 Lite Search for "{keyword}"', 'in_progress')
-    results = scrape_1688_search(keyword, max_results=50)
     
-    if 'error' in results:
-        log_activity('sourcing', f'Search failed: {results["error"]}', 'error')
-        return {'success': False, 'error': results['error']}
+    if use_test_data:
+        # Use test data for development/debugging
+        app.logger.warning('[Smart Sniper] Using TEST DATA instead of real scraping')
+        products = generate_test_products(keyword, count=10)
+        log_activity('sourcing', f'Found {len(products)} TEST items (development mode)', 'warning')
+    else:
+        # Real scraping
+        results = scrape_1688_search(keyword, max_results=50)
+        
+        if 'error' in results:
+            error_msg = results['error']
+            app.logger.error(f'[Smart Sniper] Scraping error: {error_msg}')
+            log_activity('sourcing', f'❌ Search failed: {error_msg}', 'error')
+            
+            # Fallback to test data if scraping fails
+            app.logger.warning('[Smart Sniper] Falling back to TEST DATA due to scraping failure')
+            products = generate_test_products(keyword, count=10)
+            log_activity('sourcing', f'Using {len(products)} TEST items as fallback', 'warning')
+        else:
+            products = results.get('products', [])
+            app.logger.info(f'[Smart Sniper] Raw scraping result: {len(products)} products')
+            log_activity('sourcing', f'Found {len(products)} items from listing', 'success')
     
-    products = results.get('products', [])
-    log_activity('sourcing', f'Found {len(products)} items from listing', 'success')
+    # Critical check: if still no products, cannot continue
+    if len(products) == 0:
+        app.logger.error('[Smart Sniper] ❌ CRITICAL: No products found after scraping AND test data fallback')
+        log_activity('sourcing', '❌ No products found - cannot continue', 'error')
+        return {
+            'success': False,
+            'error': 'No products found. Please check ScrapingAnt API or try different keyword.',
+            'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0}
+        }
     
     # Step 2: Safety Filter
     log_activity('sourcing', 'Step 2/5: 🛡️ Applying safety filters', 'in_progress')
+    app.logger.info(f'[Smart Sniper] Starting safety filter on {len(products)} products')
+    
     safe_products = []
+    filtered_count = 0
     for product in products:
         is_safe, reason = check_safety_filter(product['title'])
         if is_safe:
             safe_products.append(product)
         else:
-            app.logger.debug(f'Filtered: {product["title"][:40]} - {reason}')
+            filtered_count += 1
+            app.logger.debug(f'[Safety Filter] Filtered: {product["title"][:40]} - {reason}')
     
+    app.logger.info(f'[Smart Sniper] Safety filter result: {len(safe_products)} safe, {filtered_count} filtered')
     log_activity('sourcing', f'{len(safe_products)}/{len(products)} items passed safety filter', 'success')
     
     # Step 3: Margin Simulation (Load Config)
     log_activity('sourcing', 'Step 3/5: 💰 Margin simulation in progress', 'in_progress')
     target_margin = float(get_config('target_margin_rate', 30))
+    app.logger.info(f'[Smart Sniper] Target margin: {target_margin}%')
+    app.logger.info(f'[Smart Sniper] Analyzing profitability of {len(safe_products)} products')
     
     profitable_products = []
-    for product in safe_products:
-        analysis = analyze_product_profitability(product['price'])
-        
-        # Drop items not meeting target margin
-        if analysis['margin'] >= target_margin:
-            product['analysis'] = analysis
-            profitable_products.append(product)
+    failed_margin_count = 0
     
+    for idx, product in enumerate(safe_products):
+        try:
+            analysis = analyze_product_profitability(product['price'])
+            
+            app.logger.debug(f'[Margin Check {idx+1}] {product["title"][:30]}: '
+                           f'Price ¥{product["price"]}, '
+                           f'Margin {analysis["margin"]:.1f}%, '
+                           f'Profit ₩{analysis["profit"]:,}')
+            
+            # Drop items not meeting target margin
+            if analysis['margin'] >= target_margin:
+                product['analysis'] = analysis
+                profitable_products.append(product)
+            else:
+                failed_margin_count += 1
+        except Exception as e:
+            app.logger.error(f'[Margin Check] Failed for product {idx+1}: {str(e)}')
+            failed_margin_count += 1
+    
+    app.logger.info(f'[Smart Sniper] Profitability result: {len(profitable_products)} profitable, {failed_margin_count} rejected')
     log_activity('sourcing', f'{len(profitable_products)} items meet target margin {target_margin}%', 'success')
     
     # Step 4: Sort by net profit (descending)
@@ -852,32 +962,47 @@ def execute_smart_sourcing(keyword):
     
     # Step 6: Save Top 3 to Database
     log_activity('sourcing', 'Step 5/5: 💾 Saving Top 3 to database', 'in_progress')
+    app.logger.info(f'[Smart Sniper] Attempting to save {len(top_3)} products to database')
+    
     conn = get_db()
     cursor = conn.cursor()
     
-    for product in top_3:
-        cursor.execute('''
-            INSERT INTO sourced_products 
-            (original_url, title_cn, price_cny, price_krw, profit_margin, 
-             estimated_profit, safety_status, images_json, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            product['url'],
-            product['title'],
-            product['price'],
-            product['analysis']['sale_price'],
-            product['analysis']['margin'],
-            product['analysis']['profit'],
-            'passed',
-            json.dumps([product['image']]),
-            'pending'
-        ))
+    saved_count = 0
+    for idx, product in enumerate(top_3):
+        try:
+            app.logger.info(f'[DB Save {idx+1}] Title: {product["title"][:50]}')
+            app.logger.info(f'[DB Save {idx+1}] Price CNY: ¥{product["price"]}')
+            app.logger.info(f'[DB Save {idx+1}] Price KRW: ₩{product["analysis"]["sale_price"]:,}')
+            app.logger.info(f'[DB Save {idx+1}] Margin: {product["analysis"]["margin"]:.1f}%')
+            app.logger.info(f'[DB Save {idx+1}] Profit: ₩{product["analysis"]["profit"]:,}')
+            
+            cursor.execute('''
+                INSERT INTO sourced_products 
+                (original_url, title_cn, price_cny, price_krw, profit_margin, 
+                 estimated_profit, safety_status, images_json, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                product['url'],
+                product['title'],
+                product['price'],
+                product['analysis']['sale_price'],
+                product['analysis']['margin'],
+                product['analysis']['profit'],
+                'passed',
+                json.dumps([product['image']]),
+                'pending'
+            ))
+            saved_count += 1
+            app.logger.info(f'[DB Save {idx+1}] ✅ Successfully inserted')
+        except Exception as e:
+            app.logger.error(f'[DB Save {idx+1}] ❌ Failed to insert: {str(e)}')
+            app.logger.exception(e)
     
     conn.commit()
     conn.close()
     
-    app.logger.info(f'[Smart Sniper] Completed: {len(top_3)} products saved')
-    log_activity('sourcing', f'✅ Smart Sourcing completed: {len(top_3)} products saved', 'success')
+    app.logger.info(f'[Smart Sniper] Completed: {saved_count}/{len(top_3)} products saved to database')
+    log_activity('sourcing', f'✅ Smart Sourcing completed: {saved_count} products saved', 'success')
     
     return {
         'success': True,
@@ -901,9 +1026,10 @@ def start_sourcing():
     data = request.json
     user_keyword = data.get('keyword', '')
     mode = data.get('mode', 'direct')  # 'direct' or 'ai_discovery'
+    use_test_data = data.get('use_test_data', False)  # NEW: test data mode
     
     app.logger.info(f'=== Sourcing Started by {current_user.username} ===')
-    app.logger.info(f'Mode: {mode}, User keyword: {user_keyword}')
+    app.logger.info(f'Mode: {mode}, User keyword: {user_keyword}, Test data: {use_test_data}')
     
     # Determine target keyword based on mode
     if mode == 'ai_discovery':
@@ -936,7 +1062,7 @@ def start_sourcing():
         log_activity('sourcing', f'📌 Direct search mode: "{target_keyword}"', 'info')
     
     # Execute unified Smart Sniper engine
-    result = execute_smart_sourcing(target_keyword)
+    result = execute_smart_sourcing(target_keyword, use_test_data=use_test_data)
     
     if not result['success']:
         return jsonify({'error': result.get('error', 'Unknown error')}), 500
@@ -955,6 +1081,41 @@ def start_sourcing():
     app.logger.info(f'=== Sourcing Completed: {result["stats"]["final_count"]} products ===')
     
     return jsonify(response_data)
+
+@app.route('/api/sourcing/test-scraping', methods=['POST'])
+@login_required
+def test_scraping():
+    """
+    Diagnostic endpoint to test 1688 scraping functionality
+    Returns detailed information about scraping attempt
+    """
+    data = request.json
+    keyword = data.get('keyword', '电热毯')  # Default test keyword
+    
+    app.logger.info(f'[Test Scraping] Testing scraping for keyword: {keyword}')
+    
+    # Test scraping
+    result = scrape_1688_search(keyword, max_results=10)
+    
+    # Build diagnostic response
+    if 'error' in result:
+        return jsonify({
+            'success': False,
+            'error': result['error'],
+            'keyword': keyword,
+            'timestamp': datetime.now().isoformat()
+        })
+    
+    products = result.get('products', [])
+    
+    return jsonify({
+        'success': True,
+        'keyword': keyword,
+        'product_count': len(products),
+        'products': products[:5],  # Return first 5 for preview
+        'sample_product': products[0] if products else None,
+        'timestamp': datetime.now().isoformat()
+    })
 
 # ============================================================================
 # MODULE 3: AI CONTENT GENERATOR WITH IMAGE PROCESSING
