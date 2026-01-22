@@ -77,14 +77,17 @@
                             <button onclick="generateContent({{ product.id }})" class="text-blue-600 hover:text-blue-900 mr-3">
                                 📝 콘텐츠 생성
                             </button>
-                            <button onclick="approveProduct({{ product.id }})" class="text-green-600 hover:text-green-900">
+                            <button onclick="approveProduct({{ product.id }})" class="text-green-600 hover:text-green-900 mr-3">
                                 ✅ 승인
                             </button>
                             {% elif product.status == 'approved' %}
-                            <button onclick="registerToMarketplace({{ product.id }})" class="text-purple-600 hover:text-purple-900">
+                            <button onclick="registerToMarketplace({{ product.id }})" class="text-purple-600 hover:text-purple-900 mr-3">
                                 🚀 마켓 등록
                             </button>
                             {% endif %}
+                            <button onclick="deleteProduct({{ product.id }})" class="text-red-600 hover:text-red-900">
+                                🗑️ 삭제
+                            </button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -169,6 +172,30 @@
                 }
             } catch (error) {
                 alert('오류: ' + error.message);
+            }
+        }
+        
+        async function deleteProduct(productId) {
+            if (!confirm('⚠️ 정말 이 상품을 삭제하시겠습니까?\n삭제된 상품은 복구할 수 없습니다.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/products/${productId}`, {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ 상품이 삭제되었습니다!');
+                    location.reload();
+                } else {
+                    alert('❌ 삭제 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (error) {
+                alert('❌ 오류: ' + error.message);
             }
         }
     </script>

@@ -2500,6 +2500,37 @@ def update_product(product_id):
         app.logger.error(f'[Product Update] ❌ Error: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/products/<int:product_id>', methods=['DELETE'])
+@login_required
+def delete_product(product_id):
+    """Delete product"""
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check if product exists
+        cursor.execute('SELECT * FROM sourced_products WHERE id = ?', (product_id,))
+        product = cursor.fetchone()
+        
+        if not product:
+            conn.close()
+            return jsonify({'success': False, 'error': '상품을 찾을 수 없습니다'}), 404
+        
+        # Delete product
+        cursor.execute('DELETE FROM sourced_products WHERE id = ?', (product_id,))
+        
+        conn.commit()
+        conn.close()
+        
+        log_activity('product_delete', f'상품 삭제: ID {product_id} - {product["title_kr"] or product["title_cn"]}', 'success')
+        app.logger.info(f'[Product Delete] ✅ Product deleted: ID {product_id}')
+        
+        return jsonify({'success': True, 'message': '상품이 삭제되었습니다'})
+        
+    except Exception as e:
+        app.logger.error(f'[Product Delete] ❌ Error: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/orders')
 @login_required
 def orders():

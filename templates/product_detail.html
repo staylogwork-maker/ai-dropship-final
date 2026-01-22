@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>상품 수정 - AI Dropshipping ERP</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Marked.js for Markdown Rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         .tab-content { display: none; }
         .tab-content.active { display: block; }
@@ -14,6 +16,10 @@
             padding: 20px;
             border-radius: 20px;
         }
+        .marketplace-btn { padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; transition: all 0.3s; }
+        .marketplace-btn.active { transform: scale(1.05); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .coupang-active { background: linear-gradient(135deg, #3182ce 0%, #2563eb 100%); color: white; }
+        .naver-active { background: linear-gradient(135deg, #38a169 0%, #2f855a 100%); color: white; }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -42,7 +48,7 @@
                         <button onclick="openTab(event, 'preview')" 
                                 class="tab-button inline-block p-4 rounded-t-lg border-b-2 border-transparent hover:text-gray-600 hover:border-gray-300" 
                                 id="preview-tab" type="button">
-                            📱 쿠팡/네이버 미리보기
+                            📱 마켓플레이스 미리보기
                         </button>
                     </li>
                 </ul>
@@ -148,18 +154,18 @@
                             <p class="text-xs text-gray-500 mt-1">※ 상품 소개에 사용될 짧은 마케팅 문구입니다.</p>
                         </div>
                         
-                        <!-- AI Description (Korean) - MAIN FIELD -->
+                        <!-- AI Description (Korean) - MAIN FIELD with Markdown Support -->
                         <div class="mb-6">
                             <label for="desc_editor" class="block text-gray-700 font-bold mb-2">
-                                📝 상세페이지 본문 (HTML) <span class="text-red-500">*</span>
+                                📝 상세페이지 본문 (Markdown/HTML) <span class="text-red-500">*</span>
                             </label>
                             <p class="text-xs text-gray-500 mb-2">
-                                ※ 여기에 AI가 쓴 내용이 보여야 합니다. 비어있으면 [AI 생성]을 다시 누르세요.
+                                ✨ Markdown 문법 지원: **굵게**, *기울임*, ### 제목, - 리스트 등을 사용하세요. 미리보기에서 자동 변환됩니다!
                             </p>
                             <textarea id="desc_editor" name="description_kr" rows="20" 
                                    class="w-full p-3 border border-gray-300 rounded-lg font-mono text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                   placeholder="<h2>상품 특징</h2><p>여기에 HTML 형식의 상세 설명을 입력하세요...</p>">{{ product.description_kr or '' }}</textarea>
-                            <p class="text-xs text-gray-500 mt-1">※ 쿠팡/네이버에 등록될 상세페이지 본문입니다. HTML 태그 사용 가능.</p>
+                                   placeholder="**훅:** 이번 겨울 필수템!&#10;&#10;**문제:** 전기세 걱정&#10;**해결:** 저전력 고효율">{{ product.description_kr or '' }}</textarea>
+                            <p class="text-xs text-gray-500 mt-1">※ 쿠팡/네이버에 등록될 상세페이지 본문입니다. Markdown 또는 HTML 사용 가능.</p>
                         </div>
                         
                         <!-- Search Tags -->
@@ -216,25 +222,44 @@
                         </div>
                         
                         <!-- Action Buttons -->
-                        <div class="flex justify-end space-x-4 pt-6 border-t border-gray-200">
-                            <a href="/products" class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
-                                취소
-                            </a>
-                            <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">
-                                💾 저장
+                        <div class="flex justify-between items-center pt-6 border-t border-gray-200">
+                            <button type="button" onclick="deleteProduct()" class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold">
+                                🗑️ 이 상품 삭제
                             </button>
+                            <div class="flex space-x-4">
+                                <a href="/products" class="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50">
+                                    취소
+                                </a>
+                                <button type="submit" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold">
+                                    💾 저장
+                                </button>
+                            </div>
                         </div>
                     </form>
                 </div>
                 
                 <!-- PREVIEW TAB -->
                 <div id="preview" class="tab-content">
+                    <!-- Marketplace Toggle Buttons -->
+                    <div class="mb-6 text-center">
+                        <div class="inline-flex gap-4 p-2 bg-gray-100 rounded-lg">
+                            <button id="coupang-btn" onclick="switchMarketplace('coupang')" 
+                                    class="marketplace-btn coupang-active active">
+                                🚀 쿠팡 보기
+                            </button>
+                            <button id="naver-btn" onclick="switchMarketplace('naver')" 
+                                    class="marketplace-btn bg-white text-gray-700">
+                                🟩 네이버 보기
+                            </button>
+                        </div>
+                    </div>
+                    
                     <div class="flex justify-center items-start">
                         <!-- Phone Preview Container -->
                         <div class="preview-phone">
                             <div class="bg-white w-[375px] min-h-[667px] shadow-2xl rounded-3xl overflow-hidden border-8 border-gray-800">
-                                <!-- Phone Header -->
-                                <div class="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 text-center font-bold text-lg">
+                                <!-- Phone Header (Dynamic) -->
+                                <div id="preview-header" class="bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 text-center font-bold text-lg">
                                     📱 Coupang Preview
                                 </div>
                                 
@@ -256,7 +281,8 @@
                                         <p id="preview-price" class="text-2xl text-red-600 font-bold mb-1">
                                             {{ "{:,}".format(product.price_krw if product.price_krw else 0) }}원
                                         </p>
-                                        <p class="text-sm text-gray-600 mb-4">
+                                        <!-- Shipping Badge (Dynamic) -->
+                                        <p id="preview-badge" class="text-sm text-gray-600 mb-4">
                                             무료배송 · 로켓배송
                                         </p>
                                         
@@ -268,8 +294,8 @@
                                         <hr class="my-4 border-gray-200">
                                         
                                         <!-- Tags -->
-                                        {% if product.tags %}
                                         <div id="preview-tags" class="mb-4">
+                                            {% if product.tags %}
                                             <div class="flex flex-wrap gap-2">
                                                 {% for tag in product.tags.split(',') %}
                                                 <span class="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-xs">
@@ -277,12 +303,12 @@
                                                 </span>
                                                 {% endfor %}
                                             </div>
+                                            {% endif %}
                                         </div>
-                                        {% endif %}
                                         
                                         <h3 class="text-lg font-bold text-gray-800 mb-3 mt-6">📝 상품 상세 정보</h3>
                                         
-                                        <!-- HTML Content Preview -->
+                                        <!-- Markdown/HTML Content Preview -->
                                         <div id="preview-html-container" class="prose prose-sm max-w-none text-gray-700">
                                             {{ product.description_kr|safe if product.description_kr else '<p class="text-gray-400 italic">상세 설명이 여기에 표시됩니다.</p>' }}
                                         </div>
@@ -297,6 +323,8 @@
                         <p class="text-sm text-gray-700">
                             <strong>💡 미리보기 사용법:</strong> 
                             상단 <strong>[✏️ 정보 수정]</strong> 탭에서 내용을 수정한 후 이 탭으로 돌아오면 실시간으로 변경된 내용을 확인할 수 있습니다.
+                            <br>
+                            <strong>🎨 마켓플레이스 선택:</strong> [🚀 쿠팡 보기] 또는 [🟩 네이버 보기] 버튼을 클릭하여 각 마켓 스타일을 확인하세요.
                         </p>
                     </div>
                 </div>
@@ -305,31 +333,60 @@
     </div>
     
     <script>
+        let currentMarketplace = 'coupang';
+        
         // Tab Switching
         function openTab(evt, tabName) {
-            // Hide all tabs
             const tabContents = document.getElementsByClassName("tab-content");
             for (let i = 0; i < tabContents.length; i++) {
                 tabContents[i].classList.remove("active");
             }
             
-            // Remove active class from all tab buttons
             const tabButtons = document.getElementsByClassName("tab-button");
             for (let i = 0; i < tabButtons.length; i++) {
                 tabButtons[i].classList.remove("active");
             }
             
-            // Show current tab and mark button as active
             document.getElementById(tabName).classList.add("active");
             evt.currentTarget.classList.add("active");
             
-            // Update preview when switching to preview tab
             if (tabName === 'preview') {
                 updatePreview();
             }
         }
         
-        // Update Preview
+        // Marketplace Switching
+        function switchMarketplace(marketplace) {
+            currentMarketplace = marketplace;
+            
+            const coupangBtn = document.getElementById('coupang-btn');
+            const naverBtn = document.getElementById('naver-btn');
+            const header = document.getElementById('preview-header');
+            const badge = document.getElementById('preview-badge');
+            const marketing = document.getElementById('preview-marketing');
+            
+            if (marketplace === 'coupang') {
+                // Coupang Style
+                coupangBtn.className = 'marketplace-btn coupang-active active';
+                naverBtn.className = 'marketplace-btn bg-white text-gray-700';
+                header.className = 'bg-gradient-to-r from-blue-500 to-purple-600 text-white p-4 text-center font-bold text-lg';
+                header.textContent = '📱 Coupang Preview';
+                badge.textContent = '무료배송 · 로켓배송';
+                marketing.className = 'bg-blue-50 border-l-4 border-blue-500 p-3 mb-4 rounded';
+            } else {
+                // Naver Style
+                naverBtn.className = 'marketplace-btn naver-active active';
+                coupangBtn.className = 'marketplace-btn bg-white text-gray-700';
+                header.className = 'bg-gradient-to-r from-green-500 to-green-600 text-white p-4 text-center font-bold text-lg';
+                header.textContent = '🟩 Naver SmartStore';
+                badge.textContent = '무료배송 · N Pay 적립';
+                marketing.className = 'bg-green-50 border-l-4 border-green-500 p-3 mb-4 rounded';
+            }
+            
+            updatePreview();
+        }
+        
+        // Update Preview with Markdown Rendering
         function updatePreview() {
             // Update title
             const title = document.getElementById('title_kr').value;
@@ -356,12 +413,20 @@
                 });
                 tagsHtml += '</div>';
                 document.getElementById('preview-tags').innerHTML = tagsHtml;
+            } else {
+                document.getElementById('preview-tags').innerHTML = '';
             }
             
-            // Update HTML description
-            const rawHtml = document.getElementById('desc_editor').value;
-            document.getElementById('preview-html-container').innerHTML = 
-                rawHtml || '<p class="text-gray-400 italic">상세 설명이 여기에 표시됩니다.</p>';
+            // Update description with Markdown rendering
+            const rawContent = document.getElementById('desc_editor').value;
+            if (rawContent) {
+                // Use marked.js to convert Markdown to HTML
+                const htmlContent = marked.parse(rawContent);
+                document.getElementById('preview-html-container').innerHTML = htmlContent;
+            } else {
+                document.getElementById('preview-html-container').innerHTML = 
+                    '<p class="text-gray-400 italic">상세 설명이 여기에 표시됩니다.</p>';
+            }
         }
         
         // Save Product
@@ -395,6 +460,33 @@
                     window.location.href = '/products';
                 } else {
                     alert('❌ 실패: ' + (result.error || '알 수 없는 오류'));
+                }
+            } catch (error) {
+                alert('❌ 오류: ' + error.message);
+            }
+        }
+        
+        // Delete Product
+        async function deleteProduct() {
+            if (!confirm('⚠️ 정말 이 상품을 삭제하시겠습니까?\n삭제된 상품은 복구할 수 없습니다.')) {
+                return;
+            }
+            
+            const productId = document.getElementById('productId').value;
+            
+            try {
+                const response = await fetch(`/api/products/${productId}`, {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ 상품이 삭제되었습니다!');
+                    window.location.href = '/products';
+                } else {
+                    alert('❌ 삭제 실패: ' + (result.error || '알 수 없는 오류'));
                 }
             } catch (error) {
                 alert('❌ 오류: ' + error.message);
