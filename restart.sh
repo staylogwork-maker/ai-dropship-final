@@ -38,10 +38,21 @@ else
 fi
 echo ""
 
-# 4. Kill any existing Flask processes
+# 4. Kill any existing Flask processes and free port 5000
 echo "[KILL] Stopping any existing Flask processes..."
 pkill -9 -f "python.*app.py" 2>/dev/null
-sleep 1
+
+echo "[PORT] Freeing port 5000..."
+fuser -k 5000/tcp 2>/dev/null || true
+sleep 2
+
+# Double-check port is free
+if lsof -Pi :5000 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
+    echo "[WARNING] Port 5000 still in use, force killing..."
+    lsof -ti:5000 | xargs kill -9 2>/dev/null || true
+    sleep 1
+fi
+echo "[PORT] ✓ Port 5000 is free"
 echo ""
 
 # 5. Check if running via systemd

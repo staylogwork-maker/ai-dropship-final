@@ -309,6 +309,54 @@ def auto_init_database():
     else:
         print(f'[DB-INIT] ✅ Database OK: {DB_PATH}')
     
+    # ============================================================================
+    # CRITICAL: Run migrations ALWAYS (even if database already exists)
+    # ============================================================================
+    print('[DB-MIGRATE] 🔄 Running column migrations...')
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Check existing columns
+        cursor.execute("PRAGMA table_info(sourced_products)")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+        print(f'[DB-MIGRATE] Existing columns: {sorted(existing_columns)}')
+        
+        # Define required columns with their types
+        required_columns = {
+            'keywords': 'TEXT',
+            'source_site': "TEXT DEFAULT 'alibaba'",
+            'moq': 'INTEGER DEFAULT 1',
+            'trend_score': 'INTEGER DEFAULT 0',
+            'competition_score': 'INTEGER DEFAULT 0'
+        }
+        
+        # Add missing columns
+        migrations_applied = 0
+        for column_name, column_type in required_columns.items():
+            if column_name not in existing_columns:
+                try:
+                    cursor.execute(f'ALTER TABLE sourced_products ADD COLUMN {column_name} {column_type}')
+                    conn.commit()
+                    print(f'[DB-MIGRATE] ✅ Added column: {column_name}')
+                    migrations_applied += 1
+                except sqlite3.OperationalError as e:
+                    print(f'[DB-MIGRATE] ⚠️ Column {column_name} error: {e}')
+            else:
+                print(f'[DB-MIGRATE] ✓ Column {column_name} exists')
+        
+        conn.close()
+        if migrations_applied > 0:
+            print(f'[DB-MIGRATE] ✅ Applied {migrations_applied} migration(s)')
+        else:
+            print('[DB-MIGRATE] ✅ All columns up to date')
+        
+    except Exception as e:
+        print(f'[DB-MIGRATE] ❌ Migration error: {e}')
+        import traceback
+        traceback.print_exc()
+        # Don't raise - app should still work even if migration partially fails
+    
     # CRITICAL: Verify tables exist before proceeding
     print('[DB-VERIFY] Verifying all tables exist...')
     try:
