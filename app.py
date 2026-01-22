@@ -1004,66 +1004,112 @@ def scrape_alibaba_search(keyword, max_results=50):
     encoded_keyword = urllib.parse.quote(keyword)
     search_url = f'https://www.alibaba.com/trade/search?SearchText={encoded_keyword}'
     
+    # CRITICAL: Premium anti-bot bypass configuration
     params = {
         'url': search_url,
         'x-api-key': api_key.strip(),
         'browser': 'true',
         'return_page_source': 'true',
-        'wait_for_selector': '.organic-list-offer',
-        'wait_for_timeout': '15000',
+        'wait_for_selector': '.search-card-item, .organic-list-offer, [class*="search-card"]',
+        'wait_for_timeout': '20000',
         'proxy_type': 'residential',
-        'proxy_country': 'US'
+        'proxy_country': 'US',
+        'premium_proxy': 'true',
+        'js_snippet': 'window.localStorage.clear(); window.sessionStorage.clear();',
+        'cookies': ''
     }
     
+    # Complete modern browser headers for anti-bot bypass
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,ko;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="121", "Google Chrome";v="121"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1'
     }
     
     try:
-        app.logger.info('[Alibaba Scraping] 🌐 Sending request to ScrapingAnt with RESIDENTIAL proxy...')
+        app.logger.info('[Alibaba Scraping] 🚀 ANTI-BOT BYPASS MODE: Premium residential proxy + Complete headers')
         app.logger.info(f'[Alibaba Scraping] URL: {search_url}')
         
-        response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120)
+        # Retry logic for anti-bot bypass
+        max_retries = 3
+        retry_delay = 2
         
-        if response.status_code != 200:
-            app.logger.error(f'[Alibaba Scraping] ❌ API error: {response.status_code}')
-            try:
-                app.logger.error(f'[Alibaba Scraping] Response: {response.text[:500]}')
-            except:
-                pass
-            return {'products': [], 'count': 0}
-        
-        app.logger.info(f'[Alibaba Scraping] ✅ Response received: {len(response.text)} chars')
-        
-        # Check if response is HTML (not JSON error)
-        html_content = response.text
-        
-        # Detect blocking/captcha pages
-        blocking_indicators = ['<!doctype', '<html', 'captcha', 'blocked', 'access denied', 'forbidden']
-        html_lower = html_content.lower()[:1000]
-        is_blocked = any(indicator in html_lower for indicator in blocking_indicators if '<!doctype' in html_lower or 'captcha' in html_lower)
-        
-        if is_blocked and not any(keyword in html_lower for keyword in ['product', 'offer', 'item']):
-            app.logger.error('[Alibaba Scraping] ❌ BLOCKED: Received blocking/captcha page instead of products')
-            app.logger.error(f'[Alibaba Scraping] Page preview: {html_content[:500]}')
-            app.logger.warning('[Alibaba Scraping] 🔄 This usually means:')
-            app.logger.warning('[Alibaba Scraping]   1. No residential proxy credits')
-            app.logger.warning('[Alibaba Scraping]   2. ScrapingAnt blocked by Alibaba')
-            app.logger.warning('[Alibaba Scraping]   3. Need to verify API key has residential access')
-            return {'products': [], 'count': 0}
-        
-        if html_content.strip().startswith('{'):
-            app.logger.warning('[Alibaba Scraping] ⚠️ Received JSON response, might be an error')
-            try:
-                import json
-                error_data = json.loads(html_content)
-                if 'error' in error_data or 'message' in error_data:
-                    app.logger.error(f'[Alibaba Scraping] API Error: {error_data}')
+        for attempt in range(1, max_retries + 1):
+            app.logger.info(f'[Alibaba Scraping] 🔄 Attempt {attempt}/{max_retries}')
+            
+            response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120)
+            
+            if response.status_code != 200:
+                app.logger.error(f'[Alibaba Scraping] ❌ API error: {response.status_code}')
+                try:
+                    app.logger.error(f'[Alibaba Scraping] Response: {response.text[:500]}')
+                except:
+                    pass
+                
+                if attempt < max_retries:
+                    app.logger.info(f'[Alibaba Scraping] ⏳ Retrying in {retry_delay}s...')
+                    import time
+                    time.sleep(retry_delay)
+                    continue
+                else:
                     return {'products': [], 'count': 0}
-            except:
-                pass
-        
-        app.logger.info(f'[Alibaba Scraping] HTML Preview: {html_content[:300]}')
+            
+            app.logger.info(f'[Alibaba Scraping] ✅ Response received: {len(response.text)} chars')
+            
+            html_content = response.text
+            
+            # Detect actual blocking (not just HTML presence)
+            blocking_keywords = ['captcha', 'blocked', 'access denied', 'forbidden', 'verify you are human']
+            html_lower = html_content.lower()[:2000]
+            is_actually_blocked = any(keyword in html_lower for keyword in blocking_keywords)
+            
+            if is_actually_blocked:
+                app.logger.error(f'[Alibaba Scraping] ❌ BLOCKED on attempt {attempt}: Anti-bot detection triggered')
+                app.logger.error(f'[Alibaba Scraping] Blocking keywords found in response')
+                app.logger.error(f'[Alibaba Scraping] Preview: {html_content[:400]}')
+                
+                if attempt < max_retries:
+                    app.logger.info(f'[Alibaba Scraping] ⏳ Retrying with fresh session in {retry_delay}s...')
+                    import time
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                    continue
+                else:
+                    app.logger.error('[Alibaba Scraping] ❌ All retry attempts failed - Alibaba anti-bot cannot be bypassed')
+                    return {'products': [], 'count': 0}
+            
+            # Check for JSON error response
+            if html_content.strip().startswith('{'):
+                app.logger.warning('[Alibaba Scraping] ⚠️ Received JSON response')
+                try:
+                    import json
+                    error_data = json.loads(html_content)
+                    if 'error' in error_data or 'message' in error_data:
+                        app.logger.error(f'[Alibaba Scraping] API Error: {error_data}')
+                        
+                        if attempt < max_retries:
+                            app.logger.info(f'[Alibaba Scraping] ⏳ Retrying in {retry_delay}s...')
+                            import time
+                            time.sleep(retry_delay)
+                            continue
+                        else:
+                            return {'products': [], 'count': 0}
+                except:
+                    pass
+            
+            # Success - break retry loop
+            app.logger.info(f'[Alibaba Scraping] ✅ Successfully bypassed anti-bot on attempt {attempt}')
+            app.logger.info(f'[Alibaba Scraping] HTML Preview: {html_content[:300]}')
+            break
         
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(html_content, 'lxml')
@@ -1175,66 +1221,112 @@ def scrape_aliexpress_search(keyword, max_results=50):
     encoded_keyword = urllib.parse.quote(keyword)
     search_url = f'https://www.aliexpress.com/wholesale?SearchText={encoded_keyword}'
     
+    # CRITICAL: Premium anti-bot bypass configuration
     params = {
         'url': search_url,
         'x-api-key': api_key.strip(),
         'browser': 'true',
         'return_page_source': 'true',
-        'wait_for_selector': '.list--gallery--C2f2tvm',
-        'wait_for_timeout': '15000',
+        'wait_for_selector': '.list--gallery--C2f2tvm, [class*="product"], [class*="item"]',
+        'wait_for_timeout': '20000',
         'proxy_type': 'residential',
-        'proxy_country': 'US'
+        'proxy_country': 'US',
+        'premium_proxy': 'true',
+        'js_snippet': 'window.localStorage.clear(); window.sessionStorage.clear();',
+        'cookies': ''
     }
     
+    # Complete modern browser headers for anti-bot bypass
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9,ko;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="121", "Google Chrome";v="121"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1'
     }
     
     try:
-        app.logger.info('[AliExpress Scraping] 🌐 Sending request to ScrapingAnt with RESIDENTIAL proxy...')
+        app.logger.info('[AliExpress Scraping] 🚀 ANTI-BOT BYPASS MODE: Premium residential proxy + Complete headers')
         app.logger.info(f'[AliExpress Scraping] URL: {search_url}')
         
-        response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120)
+        # Retry logic for anti-bot bypass
+        max_retries = 3
+        retry_delay = 2
         
-        if response.status_code != 200:
-            app.logger.error(f'[AliExpress Scraping] ❌ API error: {response.status_code}')
-            try:
-                app.logger.error(f'[AliExpress Scraping] Response: {response.text[:500]}')
-            except:
-                pass
-            return {'products': [], 'count': 0}
-        
-        app.logger.info(f'[AliExpress Scraping] ✅ Response received: {len(response.text)} chars')
-        
-        # Check if response is HTML (not JSON error)
-        html_content = response.text
-        
-        # Detect blocking/captcha pages
-        blocking_indicators = ['<!doctype', '<html', 'captcha', 'blocked', 'access denied', 'forbidden']
-        html_lower = html_content.lower()[:1000]
-        is_blocked = any(indicator in html_lower for indicator in blocking_indicators if '<!doctype' in html_lower or 'captcha' in html_lower)
-        
-        if is_blocked and not any(keyword in html_lower for keyword in ['product', 'offer', 'item']):
-            app.logger.error('[AliExpress Scraping] ❌ BLOCKED: Received blocking/captcha page instead of products')
-            app.logger.error(f'[AliExpress Scraping] Page preview: {html_content[:500]}')
-            app.logger.warning('[AliExpress Scraping] 🔄 This usually means:')
-            app.logger.warning('[AliExpress Scraping]   1. No residential proxy credits')
-            app.logger.warning('[AliExpress Scraping]   2. ScrapingAnt blocked by AliExpress')
-            app.logger.warning('[AliExpress Scraping]   3. Need to verify API key has residential access')
-            return {'products': [], 'count': 0}
-        
-        if html_content.strip().startswith('{'):
-            app.logger.warning('[AliExpress Scraping] ⚠️ Received JSON response, might be an error')
-            try:
-                import json
-                error_data = json.loads(html_content)
-                if 'error' in error_data or 'message' in error_data:
-                    app.logger.error(f'[AliExpress Scraping] API Error: {error_data}')
+        for attempt in range(1, max_retries + 1):
+            app.logger.info(f'[AliExpress Scraping] 🔄 Attempt {attempt}/{max_retries}')
+            
+            response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120)
+            
+            if response.status_code != 200:
+                app.logger.error(f'[AliExpress Scraping] ❌ API error: {response.status_code}')
+                try:
+                    app.logger.error(f'[AliExpress Scraping] Response: {response.text[:500]}')
+                except:
+                    pass
+                
+                if attempt < max_retries:
+                    app.logger.info(f'[AliExpress Scraping] ⏳ Retrying in {retry_delay}s...')
+                    import time
+                    time.sleep(retry_delay)
+                    continue
+                else:
                     return {'products': [], 'count': 0}
-            except:
-                pass
-        
-        app.logger.info(f'[AliExpress Scraping] HTML Preview: {html_content[:300]}')
+            
+            app.logger.info(f'[AliExpress Scraping] ✅ Response received: {len(response.text)} chars')
+            
+            html_content = response.text
+            
+            # Detect actual blocking (not just HTML presence)
+            blocking_keywords = ['captcha', 'blocked', 'access denied', 'forbidden', 'verify you are human']
+            html_lower = html_content.lower()[:2000]
+            is_actually_blocked = any(keyword in html_lower for keyword in blocking_keywords)
+            
+            if is_actually_blocked:
+                app.logger.error(f'[AliExpress Scraping] ❌ BLOCKED on attempt {attempt}: Anti-bot detection triggered')
+                app.logger.error(f'[AliExpress Scraping] Blocking keywords found in response')
+                app.logger.error(f'[AliExpress Scraping] Preview: {html_content[:400]}')
+                
+                if attempt < max_retries:
+                    app.logger.info(f'[AliExpress Scraping] ⏳ Retrying with fresh session in {retry_delay}s...')
+                    import time
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                    continue
+                else:
+                    app.logger.error('[AliExpress Scraping] ❌ All retry attempts failed - AliExpress anti-bot cannot be bypassed')
+                    return {'products': [], 'count': 0}
+            
+            # Check for JSON error response
+            if html_content.strip().startswith('{'):
+                app.logger.warning('[AliExpress Scraping] ⚠️ Received JSON response')
+                try:
+                    import json
+                    error_data = json.loads(html_content)
+                    if 'error' in error_data or 'message' in error_data:
+                        app.logger.error(f'[AliExpress Scraping] API Error: {error_data}')
+                        
+                        if attempt < max_retries:
+                            app.logger.info(f'[AliExpress Scraping] ⏳ Retrying in {retry_delay}s...')
+                            import time
+                            time.sleep(retry_delay)
+                            continue
+                        else:
+                            return {'products': [], 'count': 0}
+                except:
+                    pass
+            
+            # Success - break retry loop
+            app.logger.info(f'[AliExpress Scraping] ✅ Successfully bypassed anti-bot on attempt {attempt}')
+            app.logger.info(f'[AliExpress Scraping] HTML Preview: {html_content[:300]}')
+            break
         
         from bs4 import BeautifulSoup
         soup = BeautifulSoup(html_content, 'lxml')
@@ -1345,10 +1437,10 @@ def search_integrated_hybrid(keyword, max_results=50):
     app.logger.info(f'[Hybrid Engine] Step 3: Merging {len(all_products)} total products')
     
     if len(all_products) == 0:
-        app.logger.error('[Hybrid Engine] ❌ No products found from either source!')
-        app.logger.warning('[Hybrid Engine] 🔄 Falling back to TEST DATA for development')
-        test_data = generate_test_products(keyword, 5)
-        return test_data
+        app.logger.error('[Hybrid Engine] ❌ FAILURE: No products found from either source')
+        app.logger.error('[Hybrid Engine] ❌ Both Alibaba and AliExpress scraping failed')
+        app.logger.error('[Hybrid Engine] ❌ Check ScrapingAnt logs above for specific blocking reasons')
+        return {'products': [], 'count': 0, 'error': 'No products found - anti-bot bypass failed'}
     
     # Calculate profitability for each product
     for product in all_products:
