@@ -1693,16 +1693,34 @@ def generate_winning_product_page(title, price, images):
     
     system_prompt = """You are a TOP-TIER Korean E-commerce Merchandiser specialized in creating WINNING product pages.
 
-CRITICAL REQUIREMENTS:
-1. Structure EXACTLY like best-selling Coupang products (5-section formula)
-2. Use CLEAN, MODERN HTML/CSS (NO Markdown syntax)
-3. Apply styling directly to <img> tags for Korean shopping mall feel
-4. Use EMOTIONAL hooks and customer pain points
-5. Include TRUST signals (reviews, certifications, guarantees)
+🚨 CRITICAL RULES - MUST FOLLOW:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. ❌ NEVER use placeholder images (via.placeholder.com, example.com, etc.)
+2. ✅ ONLY use image URLs from the provided product_images list
+3. ❌ NEVER write section labels like "1. 훅:", "2. 솔루션:" in the output
+4. ✅ Write naturally flowing marketing copy without numbered labels
+5. ✅ MUST include SEO tags at the end: [TAGS]: keyword1, keyword2, ...
 
-IMAGE STYLING (MANDATORY):
-ALL <img> tags MUST include:
-style="width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin: 20px 0;"
+IMAGE RULES (CRITICAL):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Use ONLY the exact image URLs provided in the prompt
+- Format: <img src="[PROVIDED_URL]" style="width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin: 20px 0;">
+- If you need to reference images, use {img_1}, {img_2}, {img_3}, etc.
+- These placeholders will be replaced with REAL product images
+
+TEXT RULES (CRITICAL):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- NO section labels like "1. 훅:", "2. 문제:", "3. 솔루션:"
+- Write as continuous, natural marketing copy
+- Use HTML headings (<h3>) for section titles only
+- No Markdown syntax (**bold**, ##heading)
+
+SEO RULES (MANDATORY):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+At the END of your HTML, include:
+[TAGS]: keyword1, keyword2, keyword3, keyword4, keyword5, keyword6, keyword7, keyword8, keyword9, keyword10
+
+Example keywords: 겨울이불, 따뜻한담요, 전기장판, 방한용품, 수면용품...
 
 SECTION STRUCTURE:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1773,11 +1791,21 @@ REMEMBER:
 
 Product: {title}
 Price: {price:,}원
-Available Images: {len(images)} images
 
-IMAGES PROVIDED:
-Lifestyle shots (1-3): {lifestyle_imgs}
-Detail shots (4+): {detail_imgs if detail_imgs else 'Use lifestyle shots'}
+🖼️ REAL PRODUCT IMAGES (Use these EXACT URLs):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{chr(10).join([f'{{img_{i+1}}} = {url}' for i, url in enumerate(images)])}
+
+IMAGE USAGE:
+- Lifestyle shots (1-3): Use {chr(10).join([f'{{img_{i+1}}}' for i in range(min(3, len(images)))])}
+- Detail shots (4+): Use {chr(10).join([f'{{img_{i+1}}}' for i in range(3, len(images))])} if available
+
+🚨 CRITICAL REMINDERS:
+1. Replace {{img_1}}, {{img_2}}, etc. with the PROVIDED URLs above
+2. NO placeholder images (via.placeholder.com)
+3. NO section labels like "1. 훅:", "2. 솔루션:" in output
+4. Write natural, flowing marketing copy
+5. END with: [TAGS]: keyword1, keyword2, ... (10 Korean keywords)
 
 TASK:
 Generate complete HTML following the 5-section formula.
@@ -1786,6 +1814,7 @@ Make it look PROFESSIONAL and PERSUASIVE like top Coupang sellers.
 OUTPUT FORMAT:
 Pure HTML code (no markdown, no code blocks).
 Start directly with HTML tags.
+End with SEO tags: [TAGS]: keyword1, keyword2, ...
 """
     
     try:
@@ -1813,21 +1842,45 @@ Start directly with HTML tags.
             # Clean up: remove code blocks if present
             content = content.replace('```html', '').replace('```', '').strip()
             
-            # Inject actual image URLs
+            # 🔥 CRITICAL: Replace image placeholders with REAL URLs
             for i, img_url in enumerate(images, 1):
                 content = content.replace(f'{{img_{i}}}', img_url)
                 content = content.replace(f'IMAGE_{i}', img_url)
+                content = content.replace(f'[IMAGE_{i}]', img_url)
+            
+            # 🔥 CRITICAL: Remove ANY remaining placeholder images
+            import re
+            # Remove via.placeholder.com
+            content = re.sub(r'<img[^>]*src=["\']https?://via\.placeholder\.com[^"\']*["\'][^>]*>', '', content)
+            # Remove example.com placeholders
+            content = re.sub(r'<img[^>]*src=["\']https?://example\.com[^"\']*["\'][^>]*>', '', content)
+            
+            # 🔥 CRITICAL: Extract SEO tags
+            tags = ''
+            if '[TAGS]:' in content or '[TAGS]' in content:
+                import re
+                tag_match = re.search(r'\[TAGS\]:?\s*(.+?)(?:\n|$)', content, re.IGNORECASE)
+                if tag_match:
+                    tags = tag_match.group(1).strip()
+                    # Remove tags from HTML content
+                    content = re.sub(r'\[TAGS\]:?.+?(?:\n|$)', '', content, flags=re.IGNORECASE)
+            
+            # 🔥 CRITICAL: Remove section labels like "1. 훅:", "2. 솔루션:"
+            content = re.sub(r'\d+\.\s*(훅|문제|솔루션|공감|핵심|특징|디테일|FAQ|신뢰|CTA):\s*', '', content, flags=re.IGNORECASE)
             
             app.logger.info(f'[Content Generation] ✅ Generated winning product page: {len(content)} chars')
-            return content
+            if tags:
+                app.logger.info(f'[Content Generation] ✅ Extracted SEO tags: {tags}')
+            
+            return content, tags
         else:
             app.logger.error(f'[Content Generation] ❌ API error: {response.status_code}')
-            return generate_fallback_product_page(title, images)
+            return generate_fallback_product_page(title, images), ''
     
     except Exception as e:
         app.logger.error(f'[Content Generation] ❌ Exception: {str(e)}')
         log_activity('content', f'Failed to generate winning page: {str(e)}', 'error')
-        return generate_fallback_product_page(title, images)
+        return generate_fallback_product_page(title, images), ''
 
 def generate_fallback_product_page(title, images):
     """Fallback product page when API fails"""
@@ -1955,7 +2008,7 @@ def generate_content(product_id):
     
     # Generate WINNING PRODUCT PAGE (5-section structure)
     app.logger.info(f'[Content Generation] ✨ Generating WINNING 5-section structure')
-    winning_html = generate_winning_product_page(
+    winning_html, seo_tags = generate_winning_product_page(
         title=product['title_cn'],
         price=product['price_krw'],
         images=processed_images
@@ -1965,19 +2018,21 @@ def generate_content(product_id):
     notice_path = create_notice_image()
     processed_images.append(notice_path)
     
-    # Update database with WINNING content
+    # Update database with WINNING content AND SEO tags
     cursor.execute('''
         UPDATE sourced_products
         SET marketing_copy = ?,
             description_kr = ?,
             processed_images_json = ?,
-            title_kr = ?
+            title_kr = ?,
+            description_cn = ?
         WHERE id = ?
     ''', (
         marketing_copy,
         winning_html,  # Full winning structure in description_kr
         json.dumps(processed_images),
         product['title_cn'],
+        seo_tags,  # Store SEO tags in description_cn temporarily (we can add a tags column later)
         product_id
     ))
     
@@ -1985,6 +2040,8 @@ def generate_content(product_id):
     conn.close()
     
     app.logger.info(f'[Content Generation] ✅ WINNING content generated: {len(winning_html)} chars')
+    if seo_tags:
+        app.logger.info(f'[Content Generation] ✅ SEO tags: {seo_tags}')
     log_activity('content', f'✅ WINNING content generated for product {product_id}', 'success')
     
     return jsonify({
@@ -1992,6 +2049,7 @@ def generate_content(product_id):
         'marketing_copy': marketing_copy,
         'description_kr': winning_html,
         'processed_images': processed_images,
+        'seo_tags': seo_tags,
         'structure': '5-section_winning_formula'
     })
 
