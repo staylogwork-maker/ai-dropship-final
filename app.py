@@ -1657,6 +1657,205 @@ def generate_marketing_copy(title, price):
         log_activity('content', f'Failed to generate copy: {str(e)}', 'error')
         return '상품 설명이 준비 중입니다.'
 
+def generate_winning_product_page(title, price, images):
+    """
+    Generate a WINNING product detail page using the 5-section formula.
+    This structure mimics best-selling Coupang/Naver products.
+    
+    5-SECTION FORMULA:
+    1. Hook: "Do you have this problem?" (GIF or strong image)
+    2. Empathy/Solution: "That's why we prepared this." (Product intro)
+    3. Key Points: "3 reasons why this product is special" (Icons + brief)
+    4. Details: Usage shots + spec explanation (Image-text alternating)
+    5. FAQ/Shipping: Frequently asked questions
+    """
+    api_key = get_config('openai_api_key')
+    if not api_key:
+        return generate_fallback_product_page(title, images)
+    
+    # Classify images: lifestyle shots first, detail shots later
+    lifestyle_imgs = images[:3] if len(images) >= 3 else images
+    detail_imgs = images[3:] if len(images) > 3 else []
+    
+    system_prompt = """You are a TOP-TIER Korean E-commerce Merchandiser specialized in creating WINNING product pages.
+
+CRITICAL REQUIREMENTS:
+1. Structure EXACTLY like best-selling Coupang products (5-section formula)
+2. Use CLEAN, MODERN HTML/CSS (NO Markdown syntax)
+3. Apply styling directly to <img> tags for Korean shopping mall feel
+4. Use EMOTIONAL hooks and customer pain points
+5. Include TRUST signals (reviews, certifications, guarantees)
+
+IMAGE STYLING (MANDATORY):
+ALL <img> tags MUST include:
+style="width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin: 20px 0;"
+
+SECTION STRUCTURE:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 1: HOOK (강렬한 후킹)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Start with customer PAIN POINT
+- Use emotional language
+- Show problem scenario
+- 1-2 sentences MAX
+
+SECTION 2: EMPATHY & SOLUTION (공감 + 솔루션)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- "그래서 준비했습니다"
+- Introduce product as THE solution
+- Show lifestyle image
+- Build excitement
+
+SECTION 3: KEY POINTS (핵심 포인트 3가지)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Use this EXACT format:
+<div style="background: #f8f9fa; padding: 30px; border-radius: 15px; margin: 30px 0;">
+  <h3 style="font-size: 24px; font-weight: bold; margin-bottom: 20px; text-align: center;">✨ 이 제품이 특별한 이유 3가지</h3>
+  
+  <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 20px;">
+    <div style="text-align: center; padding: 20px; background: white; border-radius: 10px;">
+      <div style="font-size: 48px; margin-bottom: 10px;">🎯</div>
+      <h4 style="font-size: 18px; font-weight: bold; margin-bottom: 10px;">Point 1 Title</h4>
+      <p style="font-size: 14px; color: #666;">Brief explanation</p>
+    </div>
+    <!-- Repeat for Point 2 and 3 -->
+  </div>
+</div>
+
+SECTION 4: DETAILS (디테일 설명)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Alternate between image and text:
+- Image → Feature explanation
+- Image → Spec details
+- Image → Usage scenario
+
+SECTION 5: FAQ & TRUST (FAQ + 신뢰 구축)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+<div style="background: #fff9e6; padding: 30px; border-radius: 15px; margin: 30px 0;">
+  <h3 style="font-size: 22px; font-weight: bold; margin-bottom: 20px;">💬 자주 묻는 질문</h3>
+  
+  <div style="margin: 15px 0; padding: 15px; background: white; border-left: 4px solid #ffa500; border-radius: 8px;">
+    <strong style="color: #333;">Q: Question here?</strong>
+    <p style="margin-top: 10px; color: #666;">A: Answer here.</p>
+  </div>
+  <!-- Repeat 3-5 FAQs -->
+</div>
+
+FINAL SECTION: CTA
+<div style="text-align: center; padding: 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 15px; margin: 30px 0;">
+  <h3 style="font-size: 26px; font-weight: bold; margin-bottom: 15px;">지금 바로 경험해보세요!</h3>
+  <p style="font-size: 16px; margin-bottom: 20px;">✅ 무료배송 | ✅ 당일출고 | ✅ 100% 환불보증</p>
+</div>
+
+REMEMBER:
+- NO Markdown (**bold**, ##heading) - Use HTML only
+- ALL images MUST have rounded corners and shadows
+- Use emojis for visual appeal (🎯, ✨, 💯, 👍)
+- Keep Korean natural and persuasive
+- Focus on BENEFITS over features
+"""
+    
+    user_prompt = f"""Create a WINNING product detail page for:
+
+Product: {title}
+Price: {price:,}원
+Available Images: {len(images)} images
+
+IMAGES PROVIDED:
+Lifestyle shots (1-3): {lifestyle_imgs}
+Detail shots (4+): {detail_imgs if detail_imgs else 'Use lifestyle shots'}
+
+TASK:
+Generate complete HTML following the 5-section formula.
+Make it look PROFESSIONAL and PERSUASIVE like top Coupang sellers.
+
+OUTPUT FORMAT:
+Pure HTML code (no markdown, no code blocks).
+Start directly with HTML tags.
+"""
+    
+    try:
+        response = requests.post(
+            'https://api.openai.com/v1/chat/completions',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'model': 'gpt-4o-mini',
+                'messages': [
+                    {'role': 'system', 'content': system_prompt},
+                    {'role': 'user', 'content': user_prompt}
+                ],
+                'temperature': 0.8,
+                'max_tokens': 3000
+            },
+            timeout=60
+        )
+        
+        if response.status_code == 200:
+            content = response.json()['choices'][0]['message']['content']
+            
+            # Clean up: remove code blocks if present
+            content = content.replace('```html', '').replace('```', '').strip()
+            
+            # Inject actual image URLs
+            for i, img_url in enumerate(images, 1):
+                content = content.replace(f'{{img_{i}}}', img_url)
+                content = content.replace(f'IMAGE_{i}', img_url)
+            
+            app.logger.info(f'[Content Generation] ✅ Generated winning product page: {len(content)} chars')
+            return content
+        else:
+            app.logger.error(f'[Content Generation] ❌ API error: {response.status_code}')
+            return generate_fallback_product_page(title, images)
+    
+    except Exception as e:
+        app.logger.error(f'[Content Generation] ❌ Exception: {str(e)}')
+        log_activity('content', f'Failed to generate winning page: {str(e)}', 'error')
+        return generate_fallback_product_page(title, images)
+
+def generate_fallback_product_page(title, images):
+    """Fallback product page when API fails"""
+    img_tags = '\n'.join([
+        f'<img src="{img}" style="width: 100%; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); margin: 20px 0;" alt="Product Image">'
+        for img in images[:5]
+    ])
+    
+    return f"""
+<div style="font-family: 'Noto Sans KR', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
+    <div style="text-align: center; padding: 40px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 15px; margin-bottom: 30px;">
+        <h2 style="font-size: 28px; font-weight: bold; margin-bottom: 15px;">{title}</h2>
+        <p style="font-size: 18px;">✨ 프리미엄 품질을 합리적인 가격에</p>
+    </div>
+    
+    {img_tags}
+    
+    <div style="background: #f8f9fa; padding: 30px; border-radius: 15px; margin: 30px 0;">
+        <h3 style="font-size: 24px; font-weight: bold; margin-bottom: 20px; text-align: center;">✨ 제품 특징</h3>
+        <ul style="list-style: none; padding: 0;">
+            <li style="padding: 15px; margin: 10px 0; background: white; border-left: 4px solid #667eea; border-radius: 8px;">
+                <strong>🎯 고품질 소재</strong><br>
+                <span style="color: #666;">엄선된 소재로 만든 프리미엄 제품</span>
+            </li>
+            <li style="padding: 15px; margin: 10px 0; background: white; border-left: 4px solid #667eea; border-radius: 8px;">
+                <strong>💯 완벽한 품질 관리</strong><br>
+                <span style="color: #666;">철저한 검수를 거친 안심 상품</span>
+            </li>
+            <li style="padding: 15px; margin: 10px 0; background: white; border-left: 4px solid #667eea; border-radius: 8px;">
+                <strong>🚚 빠른 배송</strong><br>
+                <span style="color: #666;">주문 후 신속하게 배송해드립니다</span>
+            </li>
+        </ul>
+    </div>
+    
+    <div style="text-align: center; padding: 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 15px;">
+        <h3 style="font-size: 26px; font-weight: bold; margin-bottom: 15px;">지금 바로 만나보세요!</h3>
+        <p style="font-size: 16px;">✅ 무료배송 | ✅ 당일출고 | ✅ 100% 환불보증</p>
+    </div>
+</div>
+"""
+
 def process_product_image(image_url, chinese_text_regions=None):
     """
     Download image, overlay text boxes, and add Korean text
@@ -1714,7 +1913,7 @@ def process_product_image(image_url, chinese_text_regions=None):
 @app.route('/api/content/generate/<int:product_id>', methods=['POST'])
 @login_required
 def generate_content(product_id):
-    """Generate AI content for product"""
+    """Generate AI content for product using WINNING PRODUCT STRUCTURE"""
     conn = get_db()
     cursor = conn.cursor()
     
@@ -1725,41 +1924,61 @@ def generate_content(product_id):
         conn.close()
         return jsonify({'error': 'Product not found'}), 404
     
-    log_activity('content', f'Generating content for product {product_id}', 'in_progress')
+    app.logger.info(f'[Content Generation] 🚀 Starting WINNING page generation for product {product_id}')
+    log_activity('content', f'Generating WINNING content for product {product_id}', 'in_progress')
     
-    # Generate marketing copy
+    # Generate SHORT marketing copy (for summary box)
     marketing_copy = generate_marketing_copy(product['title_cn'], product['price_krw'])
     
-    # Process images
+    # Process images with Korean shopping mall styling
     original_images = json.loads(product['images_json']) if product['images_json'] else []
     processed_images = []
     
-    for img_url in original_images[:5]:  # Process max 5 images
+    app.logger.info(f'[Content Generation] 📸 Processing {len(original_images)} images with Korean styling')
+    for img_url in original_images[:8]:  # Process max 8 images for winning structure
         processed_url = process_product_image(img_url)
         processed_images.append(processed_url)
     
-    # Add notice image (create or use existing)
+    # Generate WINNING PRODUCT PAGE (5-section structure)
+    app.logger.info(f'[Content Generation] ✨ Generating WINNING 5-section structure')
+    winning_html = generate_winning_product_page(
+        title=product['title_cn'],
+        price=product['price_krw'],
+        images=processed_images
+    )
+    
+    # Add notice image at the end
     notice_path = create_notice_image()
     processed_images.append(notice_path)
     
-    # Update database
+    # Update database with WINNING content
     cursor.execute('''
         UPDATE sourced_products
         SET marketing_copy = ?,
+            description_kr = ?,
             processed_images_json = ?,
             title_kr = ?
         WHERE id = ?
-    ''', (marketing_copy, json.dumps(processed_images), product['title_cn'], product_id))
+    ''', (
+        marketing_copy,
+        winning_html,  # Full winning structure in description_kr
+        json.dumps(processed_images),
+        product['title_cn'],
+        product_id
+    ))
     
     conn.commit()
     conn.close()
     
-    log_activity('content', f'Content generated for product {product_id}', 'success')
+    app.logger.info(f'[Content Generation] ✅ WINNING content generated: {len(winning_html)} chars')
+    log_activity('content', f'✅ WINNING content generated for product {product_id}', 'success')
     
     return jsonify({
         'success': True,
         'marketing_copy': marketing_copy,
-        'processed_images': processed_images
+        'description_kr': winning_html,
+        'processed_images': processed_images,
+        'structure': '5-section_winning_formula'
     })
 
 def create_notice_image():
