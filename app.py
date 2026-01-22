@@ -1005,24 +1005,36 @@ def scrape_alibaba_search(keyword, max_results=50):
     try:
         app.logger.info('[Alibaba Scraping] 🌐 Sending request to ScrapingAnt with RESIDENTIAL proxy...')
         app.logger.info(f'[Alibaba Scraping] URL: {search_url}')
-        response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120, allow_redirects=False)
-        
-        if response.status_code in [301, 302, 303, 307, 308]:
-            app.logger.error(f'[Alibaba Scraping] ❌ REDIRECT DETECTED: {response.status_code}')
-            return {'products': [], 'count': 0}
         
         response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120)
         
         if response.status_code != 200:
             app.logger.error(f'[Alibaba Scraping] ❌ API error: {response.status_code}')
-            app.logger.error(f'[Alibaba Scraping] Response: {response.text[:500]}')
+            try:
+                app.logger.error(f'[Alibaba Scraping] Response: {response.text[:500]}')
+            except:
+                pass
             return {'products': [], 'count': 0}
         
         app.logger.info(f'[Alibaba Scraping] ✅ Response received: {len(response.text)} chars')
-        app.logger.info(f'[Alibaba Scraping] Preview: {response.text[:500]}')
+        
+        # Check if response is HTML (not JSON error)
+        html_content = response.text
+        if html_content.strip().startswith('{'):
+            app.logger.warning('[Alibaba Scraping] ⚠️ Received JSON response, might be an error')
+            try:
+                import json
+                error_data = json.loads(html_content)
+                if 'error' in error_data or 'message' in error_data:
+                    app.logger.error(f'[Alibaba Scraping] API Error: {error_data}')
+                    return {'products': [], 'count': 0}
+            except:
+                pass
+        
+        app.logger.info(f'[Alibaba Scraping] HTML Preview: {html_content[:300]}')
         
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup(response.text, 'lxml')
+        soup = BeautifulSoup(html_content, 'lxml')
         
         products = []
         selectors = [
@@ -1149,24 +1161,36 @@ def scrape_aliexpress_search(keyword, max_results=50):
     try:
         app.logger.info('[AliExpress Scraping] 🌐 Sending request to ScrapingAnt with RESIDENTIAL proxy...')
         app.logger.info(f'[AliExpress Scraping] URL: {search_url}')
-        response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120, allow_redirects=False)
-        
-        if response.status_code in [301, 302, 303, 307, 308]:
-            app.logger.error(f'[AliExpress Scraping] ❌ REDIRECT DETECTED: {response.status_code}')
-            return {'products': [], 'count': 0}
         
         response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120)
         
         if response.status_code != 200:
             app.logger.error(f'[AliExpress Scraping] ❌ API error: {response.status_code}')
-            app.logger.error(f'[AliExpress Scraping] Response: {response.text[:500]}')
+            try:
+                app.logger.error(f'[AliExpress Scraping] Response: {response.text[:500]}')
+            except:
+                pass
             return {'products': [], 'count': 0}
         
         app.logger.info(f'[AliExpress Scraping] ✅ Response received: {len(response.text)} chars')
-        app.logger.info(f'[AliExpress Scraping] Preview: {response.text[:500]}')
+        
+        # Check if response is HTML (not JSON error)
+        html_content = response.text
+        if html_content.strip().startswith('{'):
+            app.logger.warning('[AliExpress Scraping] ⚠️ Received JSON response, might be an error')
+            try:
+                import json
+                error_data = json.loads(html_content)
+                if 'error' in error_data or 'message' in error_data:
+                    app.logger.error(f'[AliExpress Scraping] API Error: {error_data}')
+                    return {'products': [], 'count': 0}
+            except:
+                pass
+        
+        app.logger.info(f'[AliExpress Scraping] HTML Preview: {html_content[:300]}')
         
         from bs4 import BeautifulSoup
-        soup = BeautifulSoup(response.text, 'lxml')
+        soup = BeautifulSoup(html_content, 'lxml')
         
         products = []
         selectors = [
