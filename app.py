@@ -125,18 +125,31 @@ def auto_init_database():
                     processed_images_json TEXT,
                     status TEXT DEFAULT 'pending',
                     keywords TEXT,
+                    source_site TEXT DEFAULT '1688',
+                    moq INTEGER DEFAULT 1,
+                    trend_score INTEGER DEFAULT 0,
+                    competition_score INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     approved_at TIMESTAMP,
                     registered_at TIMESTAMP
                 )
             ''')
             
-            # CRITICAL: Add keywords column if it doesn't exist (migration)
-            try:
-                cursor.execute('ALTER TABLE sourced_products ADD COLUMN keywords TEXT')
-                app.logger.info('[DB Init] ✅ Added keywords column to sourced_products table')
-            except:
-                pass  # Column already exists
+            # CRITICAL: Add new columns if they don't exist (migration)
+            migrations = [
+                ('keywords', 'TEXT'),
+                ('source_site', "TEXT DEFAULT '1688'"),
+                ('moq', 'INTEGER DEFAULT 1'),
+                ('trend_score', 'INTEGER DEFAULT 0'),
+                ('competition_score', 'INTEGER DEFAULT 0')
+            ]
+            
+            for column_name, column_type in migrations:
+                try:
+                    cursor.execute(f'ALTER TABLE sourced_products ADD COLUMN {column_name} {column_type}')
+                    app.logger.info(f'[DB Init] ✅ Added {column_name} column to sourced_products table')
+                except:
+                    pass  # Column already exists
             
             # Create orders table
             cursor.execute('''
@@ -1172,6 +1185,350 @@ def generate_fallback_test_data(keyword):
     
     return {'products': products, 'count': len(products), 'is_test_data': True}
 
+def parse_smart_price(price_text):
+    """
+    Smart price parser for Alibaba/AliExpress
+    Handles: $10-$20 -> 10.0, $15.99 -> 15.99, ¥50-¥100 -> 50.0
+    """
+    import re
+    if not price_text:
+        return 0.0
+    
+    # Remove currency symbols and spaces
+    cleaned = price_text.replace('$', '').replace('¥', '').replace(' ', '').replace(',', '')
+    
+    # Find all numbers (including decimals)
+    numbers = re.findall(r'\d+\.?\d*', cleaned)
+    
+    if not numbers:
+        return 0.0
+    
+    # If range (e.g., "10-20"), take the LOWEST price
+    prices = [float(n) for n in numbers]
+    return min(prices)
+
+def scrape_alibaba_search(keyword, max_results=50):
+    """
+    Scrape Alibaba.com search results
+    Focus on: Ready to Ship, Low MOQ (≤2)
+    """
+    app.logger.info(f'[Alibaba Scraping] ========================================')
+    app.logger.info(f'[Alibaba Scraping] Starting search for keyword: {keyword}')
+    
+    api_key = get_config('scrapingant_api_key')
+    if not api_key or not api_key.strip():
+        app.logger.error('[Alibaba Scraping] ❌ No ScrapingAnt API key')
+        return {'products': [], 'count': 0}
+    
+    import urllib.parse
+    encoded_keyword = urllib.parse.quote(keyword)
+    search_url = f'https://www.alibaba.com/trade/search?SearchText={encoded_keyword}'
+    
+    params = {
+        'url': search_url,
+        'x-api-key': api_key.strip(),
+        'browser': 'true',
+        'return_page_source': 'true',
+        'wait_for_selector': '.organic-list-offer',
+        'wait_for_timeout': '10000',
+        'proxy_country': 'US'
+    }
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+    
+    try:
+        app.logger.info('[Alibaba Scraping] 🌐 Sending request to ScrapingAnt...')
+        response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120, allow_redirects=False)
+        
+        if response.status_code in [301, 302, 303, 307, 308]:
+            app.logger.error(f'[Alibaba Scraping] ❌ REDIRECT DETECTED: {response.status_code}')
+            return {'products': [], 'count': 0}
+        
+        response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120)
+        
+        if response.status_code != 200:
+            app.logger.error(f'[Alibaba Scraping] ❌ API error: {response.status_code}')
+            return {'products': [], 'count': 0}
+        
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(response.text, 'lxml')
+        
+        products = []
+        selectors = [
+            ('div', 'organic-list-offer'),
+            ('div', 'offer-card'),
+            ('div', 'product-card')
+        ]
+        
+        card_items = []
+        for tag, class_name in selectors:
+            card_items = soup.find_all(tag, class_=class_name)
+            if len(card_items) > 0:
+                app.logger.info(f'[Alibaba Scraping] Found {len(card_items)} items with selector {tag}.{class_name}')
+                break
+        
+        for idx, item in enumerate(card_items[:max_results]):
+            try:
+                url = ''
+                title = ''
+                price = 0
+                moq = 1
+                image = ''
+                
+                # Extract URL
+                link = item.find('a', href=True)
+                if link:
+                    url = link['href']
+                    if not url.startswith('http'):
+                        url = 'https://www.alibaba.com' + url
+                
+                # Extract title
+                title_elem = item.find('h2') or item.find('h3') or item.find('div', class_='title')
+                if title_elem:
+                    title = title_elem.get_text(strip=True)
+                
+                # Extract price (smart parsing)
+                price_elem = item.find('span', class_='price') or item.find('div', class_='price')
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    price = parse_smart_price(price_text)
+                
+                # Extract MOQ
+                moq_elem = item.find('span', string=re.compile(r'MOQ', re.I)) or item.find('div', string=re.compile(r'MOQ', re.I))
+                if moq_elem:
+                    moq_text = moq_elem.get_text(strip=True)
+                    moq_match = re.search(r'(\d+)', moq_text)
+                    if moq_match:
+                        moq = int(moq_match.group(1))
+                
+                # Extract image
+                img = item.find('img')
+                if img:
+                    image = img.get('src', '') or img.get('data-src', '')
+                    if image and not image.startswith('http'):
+                        image = 'https:' + image if image.startswith('//') else ''
+                
+                # Validation
+                if not title or title.startswith('http') or len(title) < 3:
+                    continue
+                if not url or 'alibaba.com' not in url:
+                    continue
+                if moq > 2:  # Filter: MOQ must be ≤ 2
+                    continue
+                
+                product = {
+                    'url': url,
+                    'title': title,
+                    'price': price,
+                    'moq': moq,
+                    'sales': 0,  # Alibaba doesn't show sales easily
+                    'image': image,
+                    'source_site': 'Alibaba'
+                }
+                
+                if product['title'] and product['price'] > 0:
+                    products.append(product)
+                    app.logger.info(f'[Alibaba] ✅ Product {len(products)}: {title[:40]} - ${price} (MOQ: {moq})')
+            
+            except Exception as e:
+                app.logger.warning(f'[Alibaba Scraping] Failed to parse product {idx+1}: {str(e)}')
+                continue
+        
+        app.logger.info(f'[Alibaba Scraping] ✅ Found {len(products)} valid products')
+        return {'products': products, 'count': len(products)}
+    
+    except Exception as e:
+        app.logger.error(f'[Alibaba Scraping] ❌ Exception: {str(e)}')
+        return {'products': [], 'count': 0}
+
+def scrape_aliexpress_search(keyword, max_results=50):
+    """
+    Scrape AliExpress search results
+    Note: AliExpress has MOQ = 1 by default
+    """
+    app.logger.info(f'[AliExpress Scraping] ========================================')
+    app.logger.info(f'[AliExpress Scraping] Starting search for keyword: {keyword}')
+    
+    api_key = get_config('scrapingant_api_key')
+    if not api_key or not api_key.strip():
+        app.logger.error('[AliExpress Scraping] ❌ No ScrapingAnt API key')
+        return {'products': [], 'count': 0}
+    
+    import urllib.parse
+    encoded_keyword = urllib.parse.quote(keyword)
+    search_url = f'https://www.aliexpress.com/wholesale?SearchText={encoded_keyword}'
+    
+    params = {
+        'url': search_url,
+        'x-api-key': api_key.strip(),
+        'browser': 'true',
+        'return_page_source': 'true',
+        'wait_for_selector': '.list--gallery--C2f2tvm',
+        'wait_for_timeout': '10000',
+        'proxy_country': 'US'
+    }
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }
+    
+    try:
+        app.logger.info('[AliExpress Scraping] 🌐 Sending request to ScrapingAnt...')
+        response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120, allow_redirects=False)
+        
+        if response.status_code in [301, 302, 303, 307, 308]:
+            app.logger.error(f'[AliExpress Scraping] ❌ REDIRECT DETECTED: {response.status_code}')
+            return {'products': [], 'count': 0}
+        
+        response = requests.get('https://api.scrapingant.com/v2/general', params=params, headers=headers, timeout=120)
+        
+        if response.status_code != 200:
+            app.logger.error(f'[AliExpress Scraping] ❌ API error: {response.status_code}')
+            return {'products': [], 'count': 0}
+        
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(response.text, 'lxml')
+        
+        products = []
+        selectors = [
+            ('div', 'list--gallery--C2f2tvm'),
+            ('div', 'product-snippet'),
+            ('div', 'product-card')
+        ]
+        
+        card_items = []
+        for tag, class_name in selectors:
+            card_items = soup.find_all(tag, class_=class_name)
+            if len(card_items) > 0:
+                app.logger.info(f'[AliExpress Scraping] Found {len(card_items)} items with selector {tag}.{class_name}')
+                break
+        
+        for idx, item in enumerate(card_items[:max_results]):
+            try:
+                url = ''
+                title = ''
+                price = 0
+                image = ''
+                
+                # Extract URL
+                link = item.find('a', href=True)
+                if link:
+                    url = link['href']
+                    if not url.startswith('http'):
+                        url = 'https://www.aliexpress.com' + url
+                
+                # Extract title
+                title_elem = item.find('h1') or item.find('h2') or item.find('h3')
+                if title_elem:
+                    title = title_elem.get_text(strip=True)
+                
+                # Extract price (smart parsing for discount prices)
+                price_elem = item.find('span', class_='price') or item.find('div', class_='price')
+                if price_elem:
+                    price_text = price_elem.get_text(strip=True)
+                    price = parse_smart_price(price_text)
+                
+                # Extract image
+                img = item.find('img')
+                if img:
+                    image = img.get('src', '') or img.get('data-src', '')
+                    if image and not image.startswith('http'):
+                        image = 'https:' + image if image.startswith('//') else ''
+                
+                # Validation
+                if not title or title.startswith('http') or len(title) < 3:
+                    continue
+                if not url or 'aliexpress.com' not in url:
+                    continue
+                
+                product = {
+                    'url': url,
+                    'title': title,
+                    'price': price,
+                    'moq': 1,  # AliExpress always MOQ = 1
+                    'sales': 0,
+                    'image': image,
+                    'source_site': 'AliExpress'
+                }
+                
+                if product['title'] and product['price'] > 0:
+                    products.append(product)
+                    app.logger.info(f'[AliExpress] ✅ Product {len(products)}: {title[:40]} - ${price}')
+            
+            except Exception as e:
+                app.logger.warning(f'[AliExpress Scraping] Failed to parse product {idx+1}: {str(e)}')
+                continue
+        
+        app.logger.info(f'[AliExpress Scraping] ✅ Found {len(products)} valid products')
+        return {'products': products, 'count': len(products)}
+    
+    except Exception as e:
+        app.logger.error(f'[AliExpress Scraping] ❌ Exception: {str(e)}')
+        return {'products': [], 'count': 0}
+
+def search_integrated_hybrid(keyword, max_results=50):
+    """
+    🚀 HYBRID SOURCING ENGINE
+    Search Alibaba + AliExpress simultaneously
+    Merge results and select Top 3 based on price + margin + MOQ
+    """
+    app.logger.info(f'[Hybrid Engine] ========================================')
+    app.logger.info(f'[Hybrid Engine] 🚀 Starting HYBRID search for: {keyword}')
+    app.logger.info(f'[Hybrid Engine] Sources: Alibaba.com + AliExpress.com')
+    
+    # Step 1: Search Alibaba
+    app.logger.info('[Hybrid Engine] Step 1: Searching Alibaba.com...')
+    alibaba_result = scrape_alibaba_search(keyword, max_results)
+    alibaba_products = alibaba_result.get('products', [])
+    app.logger.info(f'[Hybrid Engine] ✅ Alibaba: {len(alibaba_products)} products')
+    
+    # Step 2: Search AliExpress
+    app.logger.info('[Hybrid Engine] Step 2: Searching AliExpress.com...')
+    aliexpress_result = scrape_aliexpress_search(keyword, max_results)
+    aliexpress_products = aliexpress_result.get('products', [])
+    app.logger.info(f'[Hybrid Engine] ✅ AliExpress: {len(aliexpress_products)} products')
+    
+    # Step 3: Merge and compare
+    all_products = alibaba_products + aliexpress_products
+    app.logger.info(f'[Hybrid Engine] Step 3: Merging {len(all_products)} total products')
+    
+    if len(all_products) == 0:
+        app.logger.error('[Hybrid Engine] ❌ No products found from either source!')
+        return {'products': [], 'count': 0}
+    
+    # Calculate profitability for each product
+    for product in all_products:
+        try:
+            # Convert USD to CNY for uniform calculation (1 USD ≈ 7.2 CNY)
+            price_cny = product['price'] * 7.2
+            analysis = analyze_product_profitability(price_cny)
+            product['analysis'] = analysis
+            product['price_cny'] = price_cny  # Store for DB
+            
+            # Calculate score: lower price + higher margin + lower MOQ = better
+            price_score = max(0, 100 - product['price'])  # Lower price = higher score
+            margin_score = analysis['margin']  # Higher margin = higher score
+            moq_score = max(0, 10 - product['moq'])  # Lower MOQ = higher score
+            
+            product['hybrid_score'] = price_score + (margin_score * 2) + (moq_score * 3)
+            
+            app.logger.debug(f'[Hybrid Score] {product["title"][:30]}: '
+                           f'Price=${product["price"]:.2f}, '
+                           f'Margin={analysis["margin"]:.1f}%, '
+                           f'MOQ={product["moq"]}, '
+                           f'Score={product["hybrid_score"]:.1f}')
+        except Exception as e:
+            app.logger.error(f'[Hybrid Engine] Failed to analyze product: {str(e)}')
+            product['hybrid_score'] = 0
+    
+    # Sort by hybrid score (descending)
+    all_products.sort(key=lambda x: x.get('hybrid_score', 0), reverse=True)
+    
+    app.logger.info(f'[Hybrid Engine] ✅ HYBRID search complete: {len(all_products)} products analyzed')
+    return {'products': all_products, 'count': len(all_products)}
+
 def analyze_product_profitability(price_cny):
     """Calculate profit margin and KRW price"""
     exchange_rate = float(get_config('cny_exchange_rate', 190))
@@ -1303,8 +1660,8 @@ def execute_smart_sourcing(keyword, use_test_data=False):
             'stage_stats': stage_stats
         }
     
-    # Step 1: 1688 Lite Search (Listing Only)
-    log_activity('sourcing', f'Step 1/5: 🔍 1688 Lite Search for "{keyword}"', 'in_progress')
+    # Step 1: 🚀 HYBRID Search (Alibaba + AliExpress)
+    log_activity('sourcing', f'Step 1/5: 🚀 HYBRID Search (Alibaba + AliExpress) for "{keyword}"', 'in_progress')
     
     if use_test_data:
         # Use test data for development/debugging
@@ -1312,8 +1669,8 @@ def execute_smart_sourcing(keyword, use_test_data=False):
         products = generate_test_products(keyword, count=10)
         log_activity('sourcing', f'Found {len(products)} TEST items (development mode)', 'warning')
     else:
-        # Real scraping
-        results = scrape_1688_search(keyword, max_results=50)
+        # 🚀 Real HYBRID scraping (Alibaba + AliExpress)
+        results = search_integrated_hybrid(keyword, max_results=50)
         
         # Check if test data was returned (has is_test_data flag)
         if results.get('is_test_data', False):
@@ -1332,7 +1689,7 @@ def execute_smart_sourcing(keyword, use_test_data=False):
             log_activity('sourcing', f'Using {len(products)} TEST items as fallback', 'warning')
         else:
             products = results.get('products', [])
-            app.logger.info(f'[Smart Sniper] Raw scraping result: {len(products)} products')
+            app.logger.info(f'[Smart Sniper] 🚀 HYBRID scraping result: {len(products)} products from Alibaba + AliExpress')
             
             # Check if it's real data or test data
             if results.get('is_test_data', False):
@@ -1506,18 +1863,22 @@ def execute_smart_sourcing(keyword, use_test_data=False):
             cursor.execute('''
                 INSERT INTO sourced_products 
                 (original_url, title_cn, price_cny, price_krw, profit_margin, 
-                 estimated_profit, safety_status, images_json, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 estimated_profit, safety_status, images_json, status,
+                 source_site, moq, traffic_score)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 product['url'],
                 product['title'],
-                product['price'],
+                product.get('price_cny', product['price']),  # Use converted CNY if available
                 product['analysis']['sale_price'],
                 product['analysis']['margin'],
                 product['analysis']['profit'],
                 'passed',
-                json.dumps([product['image']]),
-                'pending'
+                json.dumps([product.get('image', '')]),
+                'pending',
+                product.get('source_site', '1688'),  # 🚀 NEW: source site
+                product.get('moq', 1),  # 🚀 NEW: MOQ
+                product.get('sales', 0)  # 🚀 NEW: traffic score (use sales as proxy)
             ))
             saved_count += 1
             app.logger.info(f'[DB Save {idx+1}] ✅ Successfully inserted')
