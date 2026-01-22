@@ -3,6 +3,17 @@ AI Dropshipping ERP System - Main Application
 Complete implementation with all 8 modules
 """
 
+# ============================================================================
+# TIMEZONE CONFIGURATION (MUST BE FIRST)
+# ============================================================================
+import os
+os.environ['TZ'] = 'Asia/Seoul'
+try:
+    import time
+    time.tzset()
+except AttributeError:
+    pass  # Windows doesn't have tzset
+
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file, flash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -11,13 +22,12 @@ import json
 import requests
 import hashlib
 import hmac
-import time
 import base64
 import bcrypt
 from datetime import datetime, timedelta
+import pytz
 from PIL import Image, ImageDraw, ImageFont
 import io
-import os
 import re
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
@@ -25,6 +35,13 @@ import schedule
 import threading
 import logging
 from logging.handlers import RotatingFileHandler
+
+# Set Korea timezone globally
+KST = pytz.timezone('Asia/Seoul')
+
+def get_kst_now():
+    """Get current time in Korea Standard Time"""
+    return datetime.now(KST)
 
 # ============================================================================
 # DATABASE PATH CONFIGURATION (MUST BE FIRST)
@@ -434,7 +451,7 @@ def get_db():
     return conn
 
 def log_activity(action_type, description, status='success', details=None):
-    """Log system activity"""
+    """Log system activity with KST timestamp"""
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute('''
@@ -1020,6 +1037,21 @@ def scrape_alibaba_search(keyword, max_results=50):
         
         # Check if response is HTML (not JSON error)
         html_content = response.text
+        
+        # Detect blocking/captcha pages
+        blocking_indicators = ['<!doctype', '<html', 'captcha', 'blocked', 'access denied', 'forbidden']
+        html_lower = html_content.lower()[:1000]
+        is_blocked = any(indicator in html_lower for indicator in blocking_indicators if '<!doctype' in html_lower or 'captcha' in html_lower)
+        
+        if is_blocked and not any(keyword in html_lower for keyword in ['product', 'offer', 'item']):
+            app.logger.error('[Alibaba Scraping] ❌ BLOCKED: Received blocking/captcha page instead of products')
+            app.logger.error(f'[Alibaba Scraping] Page preview: {html_content[:500]}')
+            app.logger.warning('[Alibaba Scraping] 🔄 This usually means:')
+            app.logger.warning('[Alibaba Scraping]   1. No residential proxy credits')
+            app.logger.warning('[Alibaba Scraping]   2. ScrapingAnt blocked by Alibaba')
+            app.logger.warning('[Alibaba Scraping]   3. Need to verify API key has residential access')
+            return {'products': [], 'count': 0}
+        
         if html_content.strip().startswith('{'):
             app.logger.warning('[Alibaba Scraping] ⚠️ Received JSON response, might be an error')
             try:
@@ -1176,6 +1208,21 @@ def scrape_aliexpress_search(keyword, max_results=50):
         
         # Check if response is HTML (not JSON error)
         html_content = response.text
+        
+        # Detect blocking/captcha pages
+        blocking_indicators = ['<!doctype', '<html', 'captcha', 'blocked', 'access denied', 'forbidden']
+        html_lower = html_content.lower()[:1000]
+        is_blocked = any(indicator in html_lower for indicator in blocking_indicators if '<!doctype' in html_lower or 'captcha' in html_lower)
+        
+        if is_blocked and not any(keyword in html_lower for keyword in ['product', 'offer', 'item']):
+            app.logger.error('[AliExpress Scraping] ❌ BLOCKED: Received blocking/captcha page instead of products')
+            app.logger.error(f'[AliExpress Scraping] Page preview: {html_content[:500]}')
+            app.logger.warning('[AliExpress Scraping] 🔄 This usually means:')
+            app.logger.warning('[AliExpress Scraping]   1. No residential proxy credits')
+            app.logger.warning('[AliExpress Scraping]   2. ScrapingAnt blocked by AliExpress')
+            app.logger.warning('[AliExpress Scraping]   3. Need to verify API key has residential access')
+            return {'products': [], 'count': 0}
+        
         if html_content.strip().startswith('{'):
             app.logger.warning('[AliExpress Scraping] ⚠️ Received JSON response, might be an error')
             try:
