@@ -698,14 +698,30 @@ def check_safety_filter(title, description=''):
 
 def scrape_1688_search(keyword, max_results=50):
     """Scrape 1688 search results using ScrapingAnt"""
+    app.logger.info(f'[1688 Scraping] ========================================')
     app.logger.info(f'[1688 Scraping] Starting search for keyword: {keyword}')
+    app.logger.info(f'[1688 Scraping] Max results: {max_results}')
     
+    # CRITICAL: Always fetch fresh config from DB
+    app.logger.info('[1688 Scraping] [DEBUG] Fetching ScrapingAnt API key from DB...')
     api_key = get_config('scrapingant_api_key')
-    if not api_key or api_key.strip() == '':
-        app.logger.error('[1688 Scraping] ❌ ScrapingAnt API key not configured')
+    
+    # Detailed logging for debugging
+    if api_key is None:
+        app.logger.error('[1688 Scraping] [DEBUG] ScrapingAnt Key loaded from DB: NO (returned None)')
+        app.logger.error('[1688 Scraping] ❌ ScrapingAnt API key not configured in database')
         return {'error': 'ScrapingAnt API key not configured'}
     
-    app.logger.info(f'[1688 Scraping] API key found (length: {len(api_key)})')
+    api_key_stripped = api_key.strip() if isinstance(api_key, str) else ''
+    
+    if api_key_stripped == '':
+        app.logger.error('[1688 Scraping] [DEBUG] ScrapingAnt Key loaded from DB: NO (empty string)')
+        app.logger.error('[1688 Scraping] ❌ ScrapingAnt API key is empty')
+        return {'error': 'ScrapingAnt API key not configured'}
+    
+    app.logger.info(f'[1688 Scraping] [DEBUG] ScrapingAnt Key loaded from DB: YES')
+    app.logger.info(f'[1688 Scraping] ✅ API key found (length: {len(api_key_stripped)})')
+    app.logger.info(f'[1688 Scraping] API key preview: {api_key_stripped[:10]}...')
     
     search_url = f'https://s.1688.com/selloffer/offer_search.htm?keywords={keyword}'
     app.logger.info(f'[1688 Scraping] Search URL: {search_url}')
@@ -853,8 +869,31 @@ def execute_smart_sourcing(keyword, use_test_data=False):
     
     Returns: dict with 'success', 'products' (Top 3 only), 'stats'
     """
+    app.logger.info(f'[Smart Sniper] ========================================')
     app.logger.info(f'[Smart Sniper] Executing unified sourcing for keyword: {keyword}')
     app.logger.info(f'[Smart Sniper] Use test data: {use_test_data}')
+    
+    # CRITICAL: Verify DB configuration is accessible
+    app.logger.info('[Smart Sniper] [DEBUG] Pre-flight check: Verifying DB config access...')
+    
+    # Test config loading
+    test_api_key = get_config('scrapingant_api_key')
+    test_target_margin = get_config('target_margin_rate', 30)
+    test_exchange_rate = get_config('cny_exchange_rate', 190)
+    
+    app.logger.info(f'[Smart Sniper] [DEBUG] ScrapingAnt key from DB: {"YES" if test_api_key else "NO"}')
+    app.logger.info(f'[Smart Sniper] [DEBUG] Target margin from DB: {test_target_margin}')
+    app.logger.info(f'[Smart Sniper] [DEBUG] Exchange rate from DB: {test_exchange_rate}')
+    
+    if not test_api_key and not use_test_data:
+        app.logger.error('[Smart Sniper] ❌ CRITICAL: ScrapingAnt API key not configured in DB')
+        app.logger.error('[Smart Sniper] Please configure API key in Settings page')
+        log_activity('sourcing', '❌ ScrapingAnt API key not configured', 'error')
+        return {
+            'success': False,
+            'error': 'ScrapingAnt API key not configured. Please set it in Settings.',
+            'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0}
+        }
     
     # Step 1: 1688 Lite Search (Listing Only)
     log_activity('sourcing', f'Step 1/5: 🔍 1688 Lite Search for "{keyword}"', 'in_progress')
@@ -2011,12 +2050,84 @@ def update_config():
     """Update configuration"""
     data = request.json
     
+    app.logger.info('[Config Update] ========================================')
+    app.logger.info(f'[Config Update] Received {len(data)} config items to update')
+    
+    saved_configs = []
     for key, value in data.items():
+        # Log what's being saved (mask sensitive data)
+        if 'key' in key.lower() or 'secret' in key.lower() or 'password' in key.lower():
+            display_value = f'{value[:10]}...' if value and len(value) > 10 else '[EMPTY]'
+        else:
+            display_value = value
+        
+        app.logger.info(f'[Config Update] Saving: {key} = {display_value}')
+        
         set_config(key, value)
+        saved_configs.append(key)
+        
+        # Immediately verify it was saved
+        verify_value = get_config(key)
+        if verify_value == value:
+            app.logger.info(f'[Config Update] ✅ Verified: {key} saved correctly')
+        else:
+            app.logger.error(f'[Config Update] ❌ FAILED: {key} mismatch! Expected: {value[:20]}..., Got: {verify_value}')
     
-    log_activity('config', f'Configuration updated: {", ".join(data.keys())}', 'success')
+    app.logger.info(f'[Config Update] Successfully saved: {", ".join(saved_configs)}')
+    log_activity('config', f'Configuration updated: {", ".join(saved_configs)}', 'success')
     
-    return jsonify({'success': True})
+    return jsonify({'success': True, 'saved_configs': saved_configs})
+
+@app.route('/api/config/verify', methods=['GET'])
+@login_required
+def verify_config():
+    """Verify current configuration (diagnostic endpoint)"""
+    app.logger.info('[Config Verify] Checking current configuration...')
+    
+    # Check critical config values
+    configs_to_check = [
+        'scrapingant_api_key',
+        'openai_api_key',
+        'target_margin_rate',
+        'cny_exchange_rate',
+        'exchange_rate_buffer',
+        'shipping_cost_base',
+        'customs_tax_rate'
+    ]
+    
+    config_status = {}
+    for key in configs_to_check:
+        value = get_config(key)
+        
+        # Mask sensitive values
+        if 'key' in key.lower() or 'secret' in key.lower():
+            if value:
+                masked = f'{value[:10]}...' if len(value) > 10 else '[TOO_SHORT]'
+                config_status[key] = {
+                    'configured': True,
+                    'length': len(value),
+                    'preview': masked
+                }
+                app.logger.info(f'[Config Verify] {key}: ✅ Configured (length: {len(value)})')
+            else:
+                config_status[key] = {
+                    'configured': False,
+                    'length': 0,
+                    'preview': None
+                }
+                app.logger.warning(f'[Config Verify] {key}: ❌ Not configured')
+        else:
+            config_status[key] = {
+                'configured': value is not None,
+                'value': value
+            }
+            app.logger.info(f'[Config Verify] {key}: {value}')
+    
+    return jsonify({
+        'success': True,
+        'configs': config_status,
+        'timestamp': datetime.now().isoformat()
+    })
 
 @app.route('/api/logs/stream')
 @login_required
