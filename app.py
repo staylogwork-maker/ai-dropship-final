@@ -999,11 +999,21 @@ def execute_smart_sourcing(keyword, use_test_data=False):
     5. Slice to Top 3 only
     6. Use ScrapingAnt tokens ONLY for these 3 items to fetch details
     
-    Returns: dict with 'success', 'products' (Top 3 only), 'stats'
+    Returns: dict with 'success', 'products' (Top 3 only), 'stats', 'stage_stats'
     """
     app.logger.info(f'[Smart Sniper] ========================================')
     app.logger.info(f'[Smart Sniper] Executing unified sourcing for keyword: {keyword}')
     app.logger.info(f'[Smart Sniper] Use test data: {use_test_data}')
+    
+    # Initialize stage-by-stage tracking for UI feedback
+    stage_stats = {
+        'stage1_scraped': 0,
+        'stage2_safe': 0,
+        'stage3_profitable': 0,
+        'stage4_final': 0,
+        'highest_margin_product': None,
+        'highest_margin_value': 0
+    }
     
     # ========================================================================
     # CRITICAL: SYSTEM CHECK - Verify DB and load configurations
@@ -1018,7 +1028,8 @@ def execute_smart_sourcing(keyword, use_test_data=False):
         return {
             'success': False,
             'error': f'System configuration error: {str(e)}',
-            'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0}
+            'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0},
+            'stage_stats': stage_stats
         }
     
     # ========================================================================
@@ -1028,12 +1039,17 @@ def execute_smart_sourcing(keyword, use_test_data=False):
     openai_key = get_config('openai_api_key', '')
     target_margin_rate = get_config('target_margin_rate', 30)
     cny_exchange_rate = get_config('cny_exchange_rate', 190)
+    debug_mode = get_config('debug_mode_ignore_filters', 'false')
+    
+    # Convert debug_mode to boolean
+    debug_mode_enabled = debug_mode.lower() in ['true', '1', 'yes', 'on']
     
     app.logger.info('[Smart Sniper] 📋 Config loaded from DB:')
     app.logger.info(f'  - ScrapingAnt key: {scrapingant_key[:4]}**** (len: {len(scrapingant_key)})')
     app.logger.info(f'  - OpenAI key: {openai_key[:4]}**** (len: {len(openai_key)})')
     app.logger.info(f'  - Target margin: {target_margin_rate}%')
     app.logger.info(f'  - CNY rate: {cny_exchange_rate}')
+    app.logger.info(f'  - 🐛 DEBUG MODE (Ignore Filters): {debug_mode_enabled}')
     
     if not scrapingant_key and not use_test_data:
         app.logger.error('[Smart Sniper] ❌ CRITICAL: ScrapingAnt API key is EMPTY after DB load')
@@ -1042,7 +1058,8 @@ def execute_smart_sourcing(keyword, use_test_data=False):
         return {
             'success': False,
             'error': 'ScrapingAnt API key not configured. Please set it in Settings.',
-            'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0}
+            'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0},
+            'stage_stats': stage_stats
         }
     
     # Step 1: 1688 Lite Search (Listing Only)
@@ -1071,6 +1088,10 @@ def execute_smart_sourcing(keyword, use_test_data=False):
             app.logger.info(f'[Smart Sniper] Raw scraping result: {len(products)} products')
             log_activity('sourcing', f'Found {len(products)} items from listing', 'success')
     
+    # 📊 STAGE 1: Record scraped count
+    stage_stats['stage1_scraped'] = len(products)
+    app.logger.info(f'[Smart Sniper] 📊 STAGE 1 COMPLETE: {len(products)} products scraped')
+    
     # Critical check: if still no products, cannot continue
     if len(products) == 0:
         app.logger.error('[Smart Sniper] ❌ CRITICAL: No products found after scraping AND test data fallback')
@@ -1078,27 +1099,40 @@ def execute_smart_sourcing(keyword, use_test_data=False):
         return {
             'success': False,
             'error': 'No products found. Please check ScrapingAnt API or try different keyword.',
-            'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0}
+            'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0},
+            'stage_stats': stage_stats
         }
     
-    # Step 2: Safety Filter
+    # Step 2: Safety Filter (SKIP if debug mode enabled)
     log_activity('sourcing', 'Step 2/5: 🛡️ Applying safety filters', 'in_progress')
     app.logger.info(f'[Smart Sniper] Starting safety filter on {len(products)} products')
     
-    safe_products = []
-    filtered_count = 0
-    for product in products:
-        is_safe, reason = check_safety_filter(product['title'])
-        if is_safe:
-            safe_products.append(product)
-        else:
-            filtered_count += 1
-            app.logger.debug(f'[Safety Filter] Filtered: {product["title"][:40]} - {reason}')
+    if debug_mode_enabled:
+        # 🐛 DEBUG MODE: Skip safety filter
+        app.logger.warning('[Smart Sniper] 🐛 DEBUG MODE: SKIPPING SAFETY FILTER')
+        safe_products = products
+        filtered_count = 0
+        log_activity('sourcing', f'🐛 Debug mode: All {len(products)} products marked as safe', 'warning')
+    else:
+        # Normal safety filtering
+        safe_products = []
+        filtered_count = 0
+        for product in products:
+            is_safe, reason = check_safety_filter(product['title'])
+            if is_safe:
+                safe_products.append(product)
+            else:
+                filtered_count += 1
+                app.logger.debug(f'[Safety Filter] Filtered: {product["title"][:40]} - {reason}')
+        
+        app.logger.info(f'[Smart Sniper] Safety filter result: {len(safe_products)} safe, {filtered_count} filtered')
+        log_activity('sourcing', f'{len(safe_products)}/{len(products)} items passed safety filter', 'success')
     
-    app.logger.info(f'[Smart Sniper] Safety filter result: {len(safe_products)} safe, {filtered_count} filtered')
-    log_activity('sourcing', f'{len(safe_products)}/{len(products)} items passed safety filter', 'success')
+    # 📊 STAGE 2: Record safe count
+    stage_stats['stage2_safe'] = len(safe_products)
+    app.logger.info(f'[Smart Sniper] 📊 STAGE 2 COMPLETE: {len(safe_products)} products passed safety filter')
     
-    # Step 3: Margin Simulation (Load Config)
+    # Step 3: Margin Simulation (SKIP if debug mode enabled)
     log_activity('sourcing', 'Step 3/5: 💰 Margin simulation in progress', 'in_progress')
     target_margin = float(get_config('target_margin_rate', 30))
     app.logger.info(f'[Smart Sniper] Target margin: {target_margin}%')
@@ -1106,6 +1140,8 @@ def execute_smart_sourcing(keyword, use_test_data=False):
     
     profitable_products = []
     failed_margin_count = 0
+    highest_margin = 0
+    highest_margin_product = None
     
     for idx, product in enumerate(safe_products):
         try:
@@ -1116,8 +1152,18 @@ def execute_smart_sourcing(keyword, use_test_data=False):
                            f'Margin {analysis["margin"]:.1f}%, '
                            f'Profit ₩{analysis["profit"]:,}')
             
-            # Drop items not meeting target margin
-            if analysis['margin'] >= target_margin:
+            # Track highest margin product
+            if analysis['margin'] > highest_margin:
+                highest_margin = analysis['margin']
+                highest_margin_product = {
+                    'title': product['title'][:50],
+                    'price_cny': product['price'],
+                    'margin': analysis['margin'],
+                    'profit': analysis['profit']
+                }
+            
+            # Drop items not meeting target margin (UNLESS debug mode enabled)
+            if debug_mode_enabled or analysis['margin'] >= target_margin:
                 product['analysis'] = analysis
                 profitable_products.append(product)
             else:
@@ -1126,18 +1172,56 @@ def execute_smart_sourcing(keyword, use_test_data=False):
             app.logger.error(f'[Margin Check] Failed for product {idx+1}: {str(e)}')
             failed_margin_count += 1
     
-    app.logger.info(f'[Smart Sniper] Profitability result: {len(profitable_products)} profitable, {failed_margin_count} rejected')
-    log_activity('sourcing', f'{len(profitable_products)} items meet target margin {target_margin}%', 'success')
+    # 📊 Record highest margin for diagnostics
+    stage_stats['highest_margin_value'] = highest_margin
+    stage_stats['highest_margin_product'] = highest_margin_product
+    
+    app.logger.info(f'[Smart Sniper] 📊 Highest margin found: {highest_margin:.1f}%')
+    if highest_margin_product:
+        app.logger.info(f'[Smart Sniper] 📊 Highest margin product: {highest_margin_product["title"]}')
+    
+    if debug_mode_enabled:
+        app.logger.warning(f'[Smart Sniper] 🐛 DEBUG MODE: SKIPPING MARGIN FILTER - All {len(profitable_products)} products accepted')
+        log_activity('sourcing', f'🐛 Debug mode: All {len(profitable_products)} products marked as profitable', 'warning')
+    else:
+        app.logger.info(f'[Smart Sniper] Profitability result: {len(profitable_products)} profitable, {failed_margin_count} rejected')
+        log_activity('sourcing', f'{len(profitable_products)} items meet target margin {target_margin}%', 'success')
+    
+    # 📊 STAGE 3: Record profitable count
+    stage_stats['stage3_profitable'] = len(profitable_products)
+    app.logger.info(f'[Smart Sniper] 📊 STAGE 3 COMPLETE: {len(profitable_products)} products are profitable')
     
     # Step 4: Sort by net profit (descending)
     profitable_products.sort(key=lambda x: x['analysis']['profit'], reverse=True)
     
-    # Step 5: Slice to Top 3 ONLY
-    top_3 = profitable_products[:3]
-    log_activity('sourcing', f'Step 4/5: 🎯 Top 3 selected (sorted by profit)', 'success')
+    # Step 5: Slice to Top 3 ONLY (or all products if debug mode)
+    if debug_mode_enabled:
+        # 🐛 DEBUG MODE: Return ALL products instead of just top 3
+        top_3 = profitable_products[:50]  # Cap at 50 to avoid UI overload
+        app.logger.warning(f'[Smart Sniper] 🐛 DEBUG MODE: Returning TOP {len(top_3)} products (not limited to 3)')
+        log_activity('sourcing', f'Step 4/5: 🐛 Debug mode: Top {len(top_3)} selected', 'warning')
+    else:
+        top_3 = profitable_products[:3]
+        log_activity('sourcing', f'Step 4/5: 🎯 Top 3 selected (sorted by profit)', 'success')
+    
+    # 📊 STAGE 4: Record final count
+    stage_stats['stage4_final'] = len(top_3)
+    app.logger.info(f'[Smart Sniper] 📊 STAGE 4 COMPLETE: {len(top_3)} products in final selection')
     
     if len(top_3) == 0:
-        log_activity('sourcing', '⚠️ No profitable products found', 'warning')
+        # 🚨 CRITICAL: No products after all filters
+        app.logger.error('[Smart Sniper] ❌ ZERO products after all filters!')
+        app.logger.error(f'[Smart Sniper] 📊 Breakdown: Scraped={stage_stats["stage1_scraped"]}, '
+                        f'Safe={stage_stats["stage2_safe"]}, '
+                        f'Profitable={stage_stats["stage3_profitable"]}, '
+                        f'Final={stage_stats["stage4_final"]}')
+        app.logger.error(f'[Smart Sniper] 💡 Highest margin found: {highest_margin:.1f}% (target: {target_margin}%)')
+        
+        if highest_margin_product:
+            app.logger.error(f'[Smart Sniper] 💡 SUGGESTION: Best product was: {highest_margin_product["title"]}')
+            app.logger.error(f'[Smart Sniper] 💡 Consider lowering target margin or enabling debug mode')
+        
+        log_activity('sourcing', '⚠️ No products met all criteria - check stage breakdown in logs', 'warning')
         return {
             'success': True,
             'products': [],
@@ -1146,7 +1230,9 @@ def execute_smart_sourcing(keyword, use_test_data=False):
                 'safe': len(safe_products),
                 'profitable': len(profitable_products),
                 'final_count': 0
-            }
+            },
+            'stage_stats': stage_stats,
+            'suggestion': f'No products found. Highest margin was {highest_margin:.1f}% (target: {target_margin}%). Consider lowering margin target or enabling Debug Mode.'
         }
     
     # Step 6: Save Top 3 to Database
