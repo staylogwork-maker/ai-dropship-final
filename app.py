@@ -466,7 +466,7 @@ login_manager.login_view = 'login'
 def parse_datetime_filter(date_string):
     """Parse datetime string to datetime object for Jinja2 template"""
     if not date_string:
-        return datetime.now()
+        return get_kst_now()
     
     # Handle various datetime formats
     try:
@@ -480,13 +480,39 @@ def parse_datetime_filter(date_string):
             return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
     except (ValueError, AttributeError):
         # If parsing fails, return current time to avoid template errors
-        return datetime.now()
+        return get_kst_now()
 
 # Register custom Jinja2 filter
 app.jinja_env.filters['parse_datetime'] = parse_datetime_filter
 
 # Add now() function to Jinja2 globals for template usage
 app.jinja_env.globals['now'] = datetime.now
+
+# ============================================================================
+# IMAGE URL UTILITIES
+# ============================================================================
+
+def fix_image_url(url):
+    """
+    Fix image URL to ensure absolute HTTPS path
+    - Converts // to https://
+    - Returns empty string if invalid
+    """
+    if not url:
+        return ''
+    
+    url = str(url).strip()
+    
+    # If starts with //, add https:
+    if url.startswith('//'):
+        return 'https:' + url
+    
+    # If already absolute, return as-is
+    if url.startswith('http://') or url.startswith('https://'):
+        return url
+    
+    # If relative path, return empty (can't fix without base domain)
+    return ''
 
 # ============================================================================
 # DATABASE UTILITIES
@@ -756,7 +782,7 @@ def analyze_blue_ocean_market(user_keyword=''):
         }
     
     # Get current date and season for context
-    now = datetime.now()
+    now = get_kst_now()
     current_month = now.month
     
     # Determine Korean season
@@ -1216,8 +1242,7 @@ def scrape_alibaba_search(keyword, max_results=50):
                 img = item.find('img')
                 if img:
                     image = img.get('src', '') or img.get('data-src', '')
-                    if image and not image.startswith('http'):
-                        image = 'https:' + image if image.startswith('//') else ''
+                    image = fix_image_url(image)  # 🚀 FIX: Ensure absolute HTTPS URL
                 
                 # Validation
                 if not title or title.startswith('http') or len(title) < 3:
@@ -1424,8 +1449,7 @@ def scrape_aliexpress_search(keyword, max_results=50):
                 img = item.find('img')
                 if img:
                     image = img.get('src', '') or img.get('data-src', '')
-                    if image and not image.startswith('http'):
-                        image = 'https:' + image if image.startswith('//') else ''
+                    image = fix_image_url(image)  # 🚀 FIX: Ensure absolute HTTPS URL
                 
                 # Validation
                 if not title or title.startswith('http') or len(title) < 3:
@@ -1866,7 +1890,7 @@ def execute_smart_sourcing(keyword, use_test_data=False):
                 product['analysis']['margin'],
                 product['analysis']['profit'],
                 'passed',
-                json.dumps([product.get('image', '')]),
+                json.dumps([fix_image_url(product.get('image', ''))]),  # 🚀 FIX: Ensure HTTPS URL
                 'pending',
                 product.get('source_site', 'alibaba'),  # 🚀 Source: Alibaba/AliExpress
                 product.get('moq', 1),  # 🚀 NEW: MOQ
@@ -1993,7 +2017,7 @@ def test_scraping():
             'success': False,
             'error': result['error'],
             'keyword': keyword,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': get_kst_now().isoformat()
         })
     
     products = result.get('products', [])
@@ -2018,16 +2042,23 @@ def generate_marketing_copy(title, price):
         return '상품 설명이 준비 중입니다.'
     
     prompt = f"""
-다음 상품에 대한 한국어 마케팅 카피를 작성해주세요.
+🚨 너는 대한민국 이커머스 1등 판매자다. 월매출 5억 이상 찍는 쿠팡/네이버 스마트스토어 운영자처럼 써라.
+
 상품명: {title}
 가격: {price:,}원
 
-구조:
-1. 훅(Hook): 고객의 관심을 끄는 한 문장
-2. 문제(Problem): 이 상품이 해결하는 고객의 불편함
-3. 솔루션(Solution): 이 상품의 장점과 특징
+다음 구조로 **반드시** 작성:
+1. 강력한 후킹: "이런 불편 겪고 계신가요?" (고객 결핍 자극)
+2. 공감+해결: "그래서 이 제품을 준비했습니다" (솔루션 제시)
+3. USP 3가지: 이 제품만의 차별점 3개 (구체적 수치/특징)
+4. 구매 확신: "지금 바로 경험하세요" (행동 유도)
 
-300자 이내로 작성해주세요.
+⚠️ 절대 금지:
+- "1. 훅:", "2. 문제:" 같은 라벨 쓰지 마라
+- 추상적 표현 금지 (예: "품질이 좋습니다" ❌)
+- 구체적 숫자/특징으로 써라 (예: "24시간 보온" ✅)
+
+300자 이내, 자연스럽게 흐르는 문장으로 써라.
 """
     
     try:
@@ -2041,7 +2072,7 @@ def generate_marketing_copy(title, price):
             json={
                 'model': 'gpt-4o-mini',  # FORCED: Must use gpt-4o-mini
                 'messages': [
-                    {'role': 'system', 'content': '당신은 전문 카피라이터입니다.'},
+                    {'role': 'system', 'content': '너는 월 5억 찍는 대한민국 1등 이커머스 판매자다. 쿠팡/네이버 베스트셀러를 만드는 전문가다.'},
                     {'role': 'user', 'content': prompt}
                 ],
                 'temperature': 0.7,
@@ -2661,7 +2692,7 @@ def create_order():
     net_profit = analysis['profit'] - marketplace_fee
     
     # Set shipping deadline (3 days from now)
-    shipping_deadline = datetime.now() + timedelta(days=3)
+    shipping_deadline = get_kst_now() + timedelta(days=3)
     
     cursor.execute('''
         INSERT INTO orders (
@@ -3012,7 +3043,7 @@ def export_tax_records():
         ws.column_dimensions[column].width = adjusted_width
     
     # Save to file
-    filename = f'tax_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+    filename = f'tax_export_{get_kst_now().strftime("%Y%m%d_%H%M%S")}.xlsx'
     filepath = os.path.join('static', 'exports', filename)
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
     
