@@ -1040,18 +1040,14 @@ def scrape_alibaba_search(keyword, max_results=50):
             app.logger.info(f'[Alibaba Scraping] 🎯 Attempt {attempt}/{max_retries}')
             app.logger.info(f'[Alibaba Scraping] 🎭 User-Agent: {selected_ua[:80]}...')
             
-            # 🔥 ULTIMATE Anti-Bot Configuration
+            # 🔥 ScrapingAnt Free Plan Configuration
             params = {
                 'url': search_url,
                 'x-api-key': api_key.strip(),
                 'browser': 'true',  # ✅ Real browser rendering
                 'return_page_source': 'true',
-                'stealth_proxy': 'true',  # 🚀 NEW: Stealth mode
-                'proxy_type': 'residential',  # ✅ Residential IP (harder to detect)
-                'proxy_country': 'US',
-                'premium_proxy': 'true',  # ✅ Premium quality proxies
                 'wait_for_selector': '.search-card-item, .organic-list-offer, div[class*="search-card"]',
-                'wait_for_timeout': '25000'  # Increased to 25s
+                'wait_for_timeout': '20000'
             }
             
             # 🎭 Complete modern browser headers (randomized per request)
@@ -1265,18 +1261,14 @@ def scrape_aliexpress_search(keyword, max_results=50):
             app.logger.info(f'[AliExpress Scraping] 🎯 Attempt {attempt}/{max_retries}')
             app.logger.info(f'[AliExpress Scraping] 🎭 User-Agent: {selected_ua[:80]}...')
             
-            # 🔥 ULTIMATE Anti-Bot Configuration
+            # 🔥 ScrapingAnt Free Plan Configuration
             params = {
                 'url': search_url,
                 'x-api-key': api_key.strip(),
                 'browser': 'true',  # ✅ Real browser
                 'return_page_source': 'true',
-                'stealth_proxy': 'true',  # 🚀 Stealth mode
-                'proxy_type': 'residential',  # ✅ Residential IP
-                'proxy_country': 'US',
-                'premium_proxy': 'true',  # ✅ Premium proxies
                 'wait_for_selector': '.list--gallery--C2f2tvm, div[class*="product"], div[class*="item"]',
-                'wait_for_timeout': '25000'
+                'wait_for_timeout': '20000'
             }
             
             # 🎭 Randomized browser headers
@@ -3120,7 +3112,8 @@ def update_product(product_id):
                 estimated_profit = ?,
                 marketing_copy = ?,
                 description_kr = ?,
-                description_cn = ?
+                description_cn = ?,
+                tags = ?
             WHERE id = ?
         ''', (
             data.get('title_kr'),
@@ -3131,6 +3124,7 @@ def update_product(product_id):
             data.get('marketing_copy'),
             data.get('description_kr'),
             data.get('description_cn'),
+            data.get('tags'),
             product_id
         ))
         
