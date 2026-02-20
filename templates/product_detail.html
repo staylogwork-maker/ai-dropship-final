@@ -266,20 +266,8 @@
                                 <!-- Phone Content -->
                                 <div class="overflow-y-auto h-[600px] bg-white">
                                     <!-- Product Image -->
-                                    {% if product.images_json %}
                                     {% set images = product.images_json|from_json %}
-                                    {% if images and images|length > 0 %}
-                                    <img id="preview-image" src="{{ images[0] }}" class="w-full h-auto" alt="Product Preview" onerror="this.style.display='none'">
-                                    {% else %}
-                                    <div class="w-full h-64 bg-gray-100 flex items-center justify-center">
-                                        <p class="text-gray-400">이미지 없음</p>
-                                    </div>
-                                    {% endif %}
-                                    {% else %}
-                                    <div class="w-full h-64 bg-gray-100 flex items-center justify-center">
-                                        <p class="text-gray-400">이미지 없음</p>
-                                    </div>
-                                    {% endif %}
+                                    <img id="preview-image" src="{{ images[0] if images else '' }}" class="w-full h-auto" alt="Product Preview" style="display:{{ 'block' if images else 'none' }}">
                                     
                                     <!-- Product Info -->
                                     <div class="p-4">
