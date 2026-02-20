@@ -812,7 +812,9 @@ def analyze_blue_ocean_market(user_keyword=''):
 "{user_keyword if user_keyword else '없음 (자유 선정)'}"
 
 【미션】
-위 키워드를 참고하되, 다음 3가지 조건을 모두 만족하는 '블루오션(Blue Ocean)' 상품 키워드 1개를 찾아내세요:
+위 키워드를 참고하되, 다음 조건을 모두 만족하는 '블루오션(Blue Ocean)' 상품 키워드 1개를 찾아내세요:
+
+✅ **필수 충족 조건**
 
 1. Rising Trend (급상승 트렌드)
    - 최근 검색량이 급증하고 있거나, 다가올 시즌에 수요 폭발 예상
@@ -827,21 +829,46 @@ def analyze_blue_ocean_market(user_keyword=''):
    - 구체적이고 니치한 키워드(예: '무선 무드등 탁상용 가습기')
    - Alibaba/AliExpress에서 검색 가능한 구체적인 상품명
 
+🚫 **절대 금지 카테고리 (인증/규제 이슈)**
+
+아래 카테고리는 **절대로 추천하지 마세요**:
+- 전자제품 (무선이어폰, 블루투스스피커, 스마트워치, 보조배터리 등) → KC인증, 전파인증 필요
+- 전기난방 기기 (전기장판, 온열매트, 히터 등) → 안전인증 필요
+- 의료기기 (체온계, 혈압계, 마사지기 등) → 의료기기 인증 필요
+- 유아용품 (젖병, 장난감, 카시트 등) → KC인증 필수
+- 식품/건강기능식품 → 식약처 승인 필요
+- 화장품 (기능성 화장품) → 식약처 보고 필요
+- 안전용품 (헬멧, 방호복, 소화기 등) → 안전인증 필요
+- 무게/용량 측정기 (저울, 계량기 등) → 계량 법 규제
+
+✅ **추천 가능 카테고리**
+
+- 패션잡화 (가방, 지갑, 모자, 스카프 등)
+- 리빙/홈데코 (수납용품, 인테리어소품, 화병, 액자 등)
+- 주방용품 (실리콘 조리도구, 밀폐용기, 주방정리용품 등)
+- 문구/오피스 (노트, 펜, 다이어리, 데스크정리함 등)
+- 반려동물용품 (간식 제외: 목줄, 장난감, 하우스, 식기 등)
+- 스포츠/레저 (요가매트, 운동밴드, 캠핑소품 등)
+- 자동차용품 (방향제, 차량정리함, 햇빛가리개 등)
+- 원예/가드닝 (화분, 원예도구, 지지대, 장식돌 등)
+
 **중요: 반드시 아래 JSON 형식으로만 답변하세요. 다른 텍스트는 포함하지 마세요:**
 
 {{
   "keyword": "정밀한 블루오션 키워드 (한국어)",
   "reasoning": "이 키워드를 선정한 이유를 1~2문장으로 설명",
   "trend_score": 1-10 사이 점수,
-  "competition_score": 1-10 사이 점수 (낮을수록 좋음)
+  "competition_score": 1-10 사이 점수 (낮을수록 좋음),
+  "category": "해당 카테고리명 (예: 리빙/홈데코)"
 }}
 
 예시:
 {{
-  "keyword": "반려동물 자동 급식기 카메라",
-  "reasoning": "1인 가구 증가로 펫테크 수요 급증, 대기업 미진입 영역",
+  "keyword": "반려동물 자동 급수기 스텐 식기",
+  "reasoning": "1인 가구 증가로 펫테크 수요 급증, KC인증 불필요, 대기업 미진입 영역",
   "trend_score": 9,
-  "competition_score": 3
+  "competition_score": 3,
+  "category": "반려동물용품"
 }}"""
 
     try:
@@ -859,7 +886,7 @@ def analyze_blue_ocean_market(user_keyword=''):
                 'messages': [
                     {
                         'role': 'system',
-                        'content': '당신은 한국 E-커머스 시장의 전문 MD이자 트렌드 분석가입니다. 블루오션 시장을 발굴하는 전문가입니다. 반드시 JSON 형식으로만 응답하세요.'
+                        'content': '당신은 한국 E-커머스 시장의 전문 MD이자 트렌드 분석가입니다. 블루오션 시장을 발굴하는 전문가입니다. 반드시 JSON 형식으로만 응답하세요. 중요: KC인증, 전파인증 등 규제가 필요한 전자제품, 의료기기, 식품은 절대 추천하지 마세요.'
                     },
                     {
                         'role': 'user',
@@ -1040,14 +1067,17 @@ def scrape_alibaba_search(keyword, max_results=50):
             app.logger.info(f'[Alibaba Scraping] 🎯 Attempt {attempt}/{max_retries}')
             app.logger.info(f'[Alibaba Scraping] 🎭 User-Agent: {selected_ua[:80]}...')
             
-            # 🔥 ScrapingAnt Free Plan Configuration
+            # 🔥 ScrapingAnt Business Plan Configuration (Residential Proxy + Stealth)
             params = {
                 'url': search_url,
                 'x-api-key': api_key.strip(),
-                'browser': 'true',  # ✅ Real browser rendering
+                'browser': 'true',  # ✅ Real browser rendering (+10 credits)
                 'return_page_source': 'true',
+                'proxy_type': 'residential',  # 🏠 Business Plan: Residential IP (+25 credits)
+                'proxy_country': 'US',  # 🇺🇸 US residential IP for Alibaba
+                'stealth': 'true',  # 🥷 Business Plan: Stealth mode (+5 credits)
                 'wait_for_selector': '.search-card-item, .organic-list-offer, div[class*="search-card"]',
-                'wait_for_timeout': '20000'
+                'wait_for_timeout': '30000'  # ⏱️ Increased to 30s for stability
             }
             
             # 🎭 Complete modern browser headers (randomized per request)
@@ -1265,14 +1295,17 @@ def scrape_aliexpress_search(keyword, max_results=50):
             app.logger.info(f'[AliExpress Scraping] 🎯 Attempt {attempt}/{max_retries}')
             app.logger.info(f'[AliExpress Scraping] 🎭 User-Agent: {selected_ua[:80]}...')
             
-            # 🔥 ScrapingAnt Free Plan Configuration
+            # 🔥 ScrapingAnt Business Plan Configuration (Residential Proxy + Stealth)
             params = {
                 'url': search_url,
                 'x-api-key': api_key.strip(),
-                'browser': 'true',  # ✅ Real browser
+                'browser': 'true',  # ✅ Real browser (+10 credits)
                 'return_page_source': 'true',
+                'proxy_type': 'residential',  # 🏠 Business Plan: Residential IP (+25 credits)
+                'proxy_country': 'US',  # 🇺🇸 US residential IP for AliExpress
+                'stealth': 'true',  # 🥷 Business Plan: Stealth mode (+5 credits)
                 'wait_for_selector': '.list--gallery--C2f2tvm, div[class*="product"], div[class*="item"]',
-                'wait_for_timeout': '20000'
+                'wait_for_timeout': '30000'  # ⏱️ Increased to 30s for stability
             }
             
             # 🎭 Randomized browser headers
@@ -1443,6 +1476,11 @@ def search_integrated_hybrid(keyword, max_results=50):
     alibaba_result = scrape_alibaba_search(keyword, max_results)
     alibaba_products = alibaba_result.get('products', [])
     app.logger.info(f'[Hybrid Engine] ✅ Alibaba: {len(alibaba_products)} products')
+    
+    # ⏱️ Rate Limit Protection: Wait 6 seconds between Alibaba and AliExpress
+    import time
+    app.logger.info('[Hybrid Engine] 💤 Waiting 6 seconds (Rate Limit Protection)...')
+    time.sleep(6)
     
     # Step 2: Search AliExpress
     app.logger.info('[Hybrid Engine] Step 2: Searching AliExpress.com...')
