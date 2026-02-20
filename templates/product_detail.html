@@ -388,6 +388,17 @@
         
         // Update Preview with Markdown Rendering
         function updatePreview() {
+            // Update image (from hidden field or existing src)
+            const previewImg = document.getElementById('preview-image');
+            if (previewImg) {
+                // Try to get image from main product image
+                const mainImg = document.getElementById('product-main-image');
+                if (mainImg && mainImg.src) {
+                    previewImg.src = mainImg.src;
+                    previewImg.style.display = 'block';
+                }
+            }
+            
             // Update title
             const title = document.getElementById('title_kr').value;
             document.getElementById('preview-title').textContent = title || '상품명이 여기에 표시됩니다';
