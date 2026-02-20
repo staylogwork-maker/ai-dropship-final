@@ -417,17 +417,44 @@
                 document.getElementById('preview-tags').innerHTML = '';
             }
             
-            // Update description with Markdown rendering
+            // Update description with HTML/Markdown rendering
             const rawContent = document.getElementById('desc_editor').value;
             if (rawContent) {
-                // Use marked.js to convert Markdown to HTML
-                const htmlContent = marked.parse(rawContent);
-                document.getElementById('preview-html-container').innerHTML = htmlContent;
+                // Check if content is HTML (contains <html> or <body> tags)
+                if (rawContent.includes('<html>') || rawContent.includes('<body>')) {
+                    // Extract body content from full HTML
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = rawContent;
+                    const bodyContent = tempDiv.querySelector('body');
+                    if (bodyContent) {
+                        document.getElementById('preview-html-container').innerHTML = bodyContent.innerHTML;
+                    } else {
+                        // If no body tag, use content as-is
+                        document.getElementById('preview-html-container').innerHTML = rawContent;
+                    }
+                } else if (rawContent.includes('<div>') || rawContent.includes('<p>')) {
+                    // Already HTML fragments, use directly
+                    document.getElementById('preview-html-container').innerHTML = rawContent;
+                } else {
+                    // Treat as Markdown and convert
+                    const htmlContent = marked.parse(rawContent);
+                    document.getElementById('preview-html-container').innerHTML = htmlContent;
+                }
             } else {
                 document.getElementById('preview-html-container').innerHTML = 
                     '<p class="text-gray-400 italic">상세 설명이 여기에 표시됩니다.</p>';
             }
         }
+        
+        // Auto-update preview on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            // Check if we're on the preview tab, if so update it
+            const previewTab = document.getElementById('preview');
+            if (previewTab) {
+                // Give a small delay to ensure all elements are loaded
+                setTimeout(updatePreview, 100);
+            }
+        });
         
         // Save Product
         async function saveProduct(event) {
