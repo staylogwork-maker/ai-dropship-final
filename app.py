@@ -1173,10 +1173,14 @@ def scrape_alibaba_search(keyword, max_results=50):
                     if moq_match:
                         moq = int(moq_match.group(1))
                 
-                # Extract image
+                # Extract image (try multiple attributes)
                 img = item.find('img')
                 if img:
-                    image = img.get('src', '') or img.get('data-src', '')
+                    image = (img.get('src', '') or 
+                            img.get('data-src', '') or 
+                            img.get('data-lazy-src', '') or
+                            img.get('data-original', '') or
+                            img.get('data-img', ''))
                     image = fix_image_url(image)  # 🚀 FIX: Ensure absolute HTTPS URL
                 
                 # Validation
@@ -1383,10 +1387,14 @@ def scrape_aliexpress_search(keyword, max_results=50):
                     price_text = price_elem.get_text(strip=True)
                     price = parse_smart_price(price_text)
                 
-                # Extract image
+                # Extract image (try multiple attributes)
                 img = item.find('img')
                 if img:
-                    image = img.get('src', '') or img.get('data-src', '')
+                    image = (img.get('src', '') or 
+                            img.get('data-src', '') or 
+                            img.get('data-lazy-src', '') or
+                            img.get('data-original', '') or
+                            img.get('data-img', ''))
                     image = fix_image_url(image)  # 🚀 FIX: Ensure absolute HTTPS URL
                 
                 # Validation
