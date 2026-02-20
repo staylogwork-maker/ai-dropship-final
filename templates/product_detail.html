@@ -63,10 +63,15 @@
                         <input type="hidden" id="productId" value="{{ product.id }}">
                         
                         <!-- Product Image -->
+                        {% if product.images_json %}
                         <div class="mb-6">
                             <label class="block text-sm font-medium text-gray-700 mb-2">📸 상품 이미지</label>
-                            <img id="product-main-image" src="https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=800" alt="Product" class="w-48 h-48 object-cover rounded-lg border border-gray-300">
+                            {% set images = product.images_json|from_json %}
+                            {% if images and images|length > 0 %}
+                            <img id="product-main-image" src="{{ images[0] }}" alt="Product" class="w-48 h-48 object-cover rounded-lg border border-gray-300">
+                            {% endif %}
                         </div>
+                        {% endif %}
                         
                         <!-- Basic Info Grid -->
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -261,7 +266,20 @@
                                 <!-- Phone Content -->
                                 <div class="overflow-y-auto h-[600px] bg-white">
                                     <!-- Product Image -->
-                                    <img id="preview-image" src="https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=800" class="w-full h-auto" alt="Product Preview" style="display:block;">>
+                                    {% if product.images_json %}
+                                    {% set images = product.images_json|from_json %}
+                                    {% if images and images|length > 0 %}
+                                    <img id="preview-image" src="{{ images[0] }}" class="w-full h-auto" alt="Product Preview" onerror="this.style.display='none'">
+                                    {% else %}
+                                    <div class="w-full h-64 bg-gray-100 flex items-center justify-center">
+                                        <p class="text-gray-400">이미지 없음</p>
+                                    </div>
+                                    {% endif %}
+                                    {% else %}
+                                    <div class="w-full h-64 bg-gray-100 flex items-center justify-center">
+                                        <p class="text-gray-400">이미지 없음</p>
+                                    </div>
+                                    {% endif %}
                                     
                                     <!-- Product Info -->
                                     <div class="p-4">
