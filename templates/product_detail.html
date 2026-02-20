@@ -266,8 +266,7 @@
                                 <!-- Phone Content -->
                                 <div class="overflow-y-auto h-[600px] bg-white">
                                     <!-- Product Image -->
-                                    {% set images = product.images_json|from_json %}
-                                    <img id="preview-image" src="{{ images[0] if images else '' }}" class="w-full h-auto" alt="Product Preview" style="display:{{ 'block' if images else 'none' }}">
+                                    <img id="preview-image" src="https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=800" class="w-full h-auto" alt="Product Preview">>
                                     
                                     <!-- Product Info -->
                                     <div class="p-4">
