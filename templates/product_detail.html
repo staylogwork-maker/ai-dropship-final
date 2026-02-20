@@ -235,6 +235,60 @@
                                 </button>
                             </div>
                         </div>
+                        
+                        <!-- Marketplace Registration Section -->
+                        <div class="mt-8 p-6 bg-gradient-to-r from-blue-50 to-green-50 border-2 border-blue-200 rounded-lg">
+                            <h3 class="text-xl font-bold text-gray-800 mb-4">🛒 마켓플레이스 등록</h3>
+                            <p class="text-sm text-gray-600 mb-4">상품을 저장한 후 네이버 스마트스토어 또는 쿠팡에 자동으로 등록할 수 있습니다.</p>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- Naver Registration -->
+                                <div class="bg-white p-4 rounded-lg border-2 border-green-200 hover:border-green-400 transition">
+                                    <div class="flex items-center mb-3">
+                                        <span class="text-3xl mr-3">🟩</span>
+                                        <div>
+                                            <h4 class="font-bold text-gray-800">네이버 스마트스토어</h4>
+                                            <p class="text-xs text-gray-500">자동 상품 등록</p>
+                                        </div>
+                                    </div>
+                                    <button type="button" onclick="registerToMarketplace('naver')" 
+                                            class="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold transition">
+                                        네이버에 등록하기
+                                    </button>
+                                </div>
+                                
+                                <!-- Coupang Registration -->
+                                <div class="bg-white p-4 rounded-lg border-2 border-blue-200 hover:border-blue-400 transition">
+                                    <div class="flex items-center mb-3">
+                                        <span class="text-3xl mr-3">🚀</span>
+                                        <div>
+                                            <h4 class="font-bold text-gray-800">쿠팡</h4>
+                                            <p class="text-xs text-gray-500">자동 상품 등록</p>
+                                        </div>
+                                    </div>
+                                    <button type="button" onclick="registerToMarketplace('coupang')" 
+                                            class="w-full px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold transition">
+                                        쿠팡에 등록하기
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Registration Status -->
+                            <div id="registration-status" class="mt-4 hidden">
+                                <div class="bg-white p-3 rounded-lg border border-gray-200">
+                                    <p id="status-message" class="text-sm"></p>
+                                </div>
+                            </div>
+                            
+                            <!-- API Configuration Notice -->
+                            <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <p class="text-xs text-gray-700">
+                                    <strong>⚠️ 참고:</strong> 마켓플레이스 등록을 위해서는 
+                                    <a href="/config" class="text-blue-600 hover:underline font-bold">설정 페이지</a>에서 
+                                    네이버/쿠팡 API 키를 먼저 설정해야 합니다.
+                                </p>
+                            </div>
+                        </div>
                     </form>
                 </div>
                 
@@ -509,6 +563,52 @@
                 }
             } catch (error) {
                 alert('❌ 오류: ' + error.message);
+            }
+        }
+        
+        // Register to Marketplace
+        async function registerToMarketplace(marketplace) {
+            const productId = document.getElementById('productId').value;
+            const statusDiv = document.getElementById('registration-status');
+            const statusMsg = document.getElementById('status-message');
+            
+            // Show loading
+            statusDiv.classList.remove('hidden');
+            statusMsg.innerHTML = `<span class="text-blue-600">⏳ ${marketplace === 'naver' ? '네이버' : '쿠팡'}에 등록 중...</span>`;
+            
+            try {
+                const response = await fetch(`/api/marketplace/register/${productId}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({marketplace: marketplace})
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    statusMsg.innerHTML = `
+                        <span class="text-green-600 font-bold">✅ 등록 완료!</span><br>
+                        <span class="text-sm text-gray-600">
+                            ${marketplace === 'naver' ? '네이버 스마트스토어' : '쿠팡'}에 성공적으로 등록되었습니다.
+                            ${result.external_id ? `<br>상품 ID: ${result.external_id}` : ''}
+                        </span>
+                    `;
+                    
+                    // Refresh page after 2 seconds
+                    setTimeout(() => {
+                        location.reload();
+                    }, 2000);
+                } else {
+                    statusMsg.innerHTML = `
+                        <span class="text-red-600 font-bold">❌ 등록 실패</span><br>
+                        <span class="text-sm text-gray-600">${result.error || '알 수 없는 오류가 발생했습니다.'}</span>
+                    `;
+                }
+            } catch (error) {
+                statusMsg.innerHTML = `
+                    <span class="text-red-600 font-bold">❌ 오류 발생</span><br>
+                    <span class="text-sm text-gray-600">${error.message}</span>
+                `;
             }
         }
         
