@@ -1051,8 +1051,7 @@ def scrape_alibaba_search(keyword, max_results=50):
                 'proxy_country': 'US',
                 'premium_proxy': 'true',  # ✅ Premium quality proxies
                 'wait_for_selector': '.search-card-item, .organic-list-offer, div[class*="search-card"]',
-                'wait_for_timeout': '25000',  # Increased to 25s
-                'js_snippet': 'window.localStorage.clear(); window.sessionStorage.clear(); delete window.webdriver;'  # Remove webdriver flag
+                'wait_for_timeout': '25000'  # Increased to 25s
             }
             
             # 🎭 Complete modern browser headers (randomized per request)
@@ -1277,8 +1276,7 @@ def scrape_aliexpress_search(keyword, max_results=50):
                 'proxy_country': 'US',
                 'premium_proxy': 'true',  # ✅ Premium proxies
                 'wait_for_selector': '.list--gallery--C2f2tvm, div[class*="product"], div[class*="item"]',
-                'wait_for_timeout': '25000',
-                'js_snippet': 'window.localStorage.clear(); window.sessionStorage.clear(); delete window.webdriver;'
+                'wait_for_timeout': '25000'
             }
             
             # 🎭 Randomized browser headers
