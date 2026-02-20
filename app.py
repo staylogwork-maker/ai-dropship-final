@@ -3654,6 +3654,246 @@ def bulk_delete_products():
         app.logger.error(f'[Bulk Delete] ❌ Error: {str(e)}')
         return jsonify({'success': False, 'error': str(e)}), 500
 
+def sync_naver_orders():
+    """
+    Sync orders from Naver SmartStore API
+    Fetches new orders and updates local database
+    """
+    try:
+        client_id = get_config('naver_client_id')
+        client_secret = get_config('naver_client_secret')
+        
+        if not client_id or not client_secret:
+            app.logger.warning('[Naver Sync] API credentials not configured')
+            return {'success': False, 'error': 'API credentials not configured'}
+        
+        import time
+        import hmac
+        import hashlib
+        
+        # Naver Commerce API endpoint
+        timestamp = str(int(time.time() * 1000))
+        method = 'GET'
+        path = '/v1/pay-order/seller/orders'
+        
+        # Create signature
+        message = f"{timestamp}.{method}.{path}"
+        signature = hmac.new(
+            client_secret.encode('utf-8'),
+            message.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'X-Naver-Client-Id': client_id,
+            'X-Timestamp': timestamp,
+            'X-API-Signature': signature
+        }
+        
+        # Fetch orders from last 7 days
+        params = {
+            'lastChangedFrom': (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d'),
+            'lastChangedTo': datetime.now().strftime('%Y-%m-%d')
+        }
+        
+        response = requests.get(
+            f'https://api.commerce.naver.com{path}',
+            headers=headers,
+            params=params,
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            app.logger.error(f'[Naver Sync] API error: {response.status_code}')
+            return {'success': False, 'error': f'API error: {response.status_code}'}
+        
+        data = response.json()
+        orders_data = data.get('data', {}).get('orders', [])
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        synced_count = 0
+        
+        for order in orders_data:
+            # Check if order already exists
+            cursor.execute('SELECT id FROM orders WHERE order_number = ? AND marketplace = ?',
+                          (order['orderNumber'], 'naver'))
+            existing = cursor.fetchone()
+            
+            if not existing:
+                # Create new order
+                cursor.execute('''
+                    INSERT INTO orders (
+                        order_number, marketplace, customer_name, customer_phone,
+                        customer_address, quantity, sale_price, order_status,
+                        payment_status, ordered_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    order['orderNumber'],
+                    'naver',
+                    order.get('ordererName', ''),
+                    order.get('ordererTel', ''),
+                    order.get('shippingAddress', ''),
+                    order.get('quantity', 1),
+                    order.get('paymentAmount', 0),
+                    order.get('orderStatus', 'pending'),
+                    order.get('paymentStatus', 'paid'),
+                    order.get('orderedAt', datetime.now().isoformat())
+                ))
+                synced_count += 1
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f'[Naver Sync] ✅ Synced {synced_count} new orders')
+        log_activity('marketplace', f'Naver orders synced: {synced_count} new', 'success')
+        
+        return {'success': True, 'synced_count': synced_count}
+        
+    except Exception as e:
+        app.logger.error(f'[Naver Sync] ❌ Error: {str(e)}')
+        import traceback
+        app.logger.error(traceback.format_exc())
+        return {'success': False, 'error': str(e)}
+
+def sync_coupang_orders():
+    """
+    Sync orders from Coupang Wing API
+    Fetches new orders and updates local database
+    """
+    try:
+        access_key = get_config('coupang_access_key')
+        secret_key = get_config('coupang_secret_key')
+        
+        if not access_key or not secret_key:
+            app.logger.warning('[Coupang Sync] API credentials not configured')
+            return {'success': False, 'error': 'API credentials not configured'}
+        
+        import time
+        import hmac
+        import hashlib
+        
+        # Coupang Wing API endpoint
+        method = 'GET'
+        path = '/v2/providers/seller_api/apis/api/v1/marketplace/orders'
+        query = f'createdAtFrom={int((datetime.now() - timedelta(days=7)).timestamp() * 1000)}'
+        
+        # Create signature
+        timestamp = str(int(time.time() * 1000))
+        message = f"{timestamp}{method}{path}?{query}"
+        signature = hmac.new(
+            secret_key.encode('utf-8'),
+            message.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'CEA algorithm=HmacSHA256, access-key={access_key}, signed-date={timestamp}, signature={signature}'
+        }
+        
+        response = requests.get(
+            f'https://api-gateway.coupang.com{path}?{query}',
+            headers=headers,
+            timeout=30
+        )
+        
+        if response.status_code != 200:
+            app.logger.error(f'[Coupang Sync] API error: {response.status_code}')
+            return {'success': False, 'error': f'API error: {response.status_code}'}
+        
+        data = response.json()
+        orders_data = data.get('data', [])
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        synced_count = 0
+        
+        for order in orders_data:
+            # Check if order already exists
+            cursor.execute('SELECT id FROM orders WHERE order_number = ? AND marketplace = ?',
+                          (order['orderId'], 'coupang'))
+            existing = cursor.fetchone()
+            
+            if not existing:
+                # Create new order
+                cursor.execute('''
+                    INSERT INTO orders (
+                        order_number, marketplace, customer_name, customer_phone,
+                        customer_address, quantity, sale_price, order_status,
+                        payment_status, ordered_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    order['orderId'],
+                    'coupang',
+                    order.get('ordererName', ''),
+                    order.get('ordererContact', ''),
+                    order.get('shippingAddress', ''),
+                    order.get('orderedQuantity', 1),
+                    order.get('paidAmount', 0),
+                    order.get('shipmentBoxId') and 'confirmed' or 'pending',
+                    'paid',
+                    order.get('orderedAt', datetime.now().isoformat())
+                ))
+                synced_count += 1
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f'[Coupang Sync] ✅ Synced {synced_count} new orders')
+        log_activity('marketplace', f'Coupang orders synced: {synced_count} new', 'success')
+        
+        return {'success': True, 'synced_count': synced_count}
+        
+    except Exception as e:
+        app.logger.error(f'[Coupang Sync] ❌ Error: {str(e)}')
+        import traceback
+        app.logger.error(traceback.format_exc())
+        return {'success': False, 'error': str(e)}
+
+@app.route('/api/orders/sync', methods=['POST'])
+@login_required
+def sync_marketplace_orders():
+    """
+    Sync orders from all configured marketplaces
+    Can be called manually or set up as a cron job
+    """
+    try:
+        results = {
+            'naver': {'synced': False, 'count': 0},
+            'coupang': {'synced': False, 'count': 0}
+        }
+        
+        # Sync Naver orders
+        naver_result = sync_naver_orders()
+        if naver_result.get('success'):
+            results['naver']['synced'] = True
+            results['naver']['count'] = naver_result.get('synced_count', 0)
+        else:
+            results['naver']['error'] = naver_result.get('error', 'Unknown error')
+        
+        # Sync Coupang orders
+        coupang_result = sync_coupang_orders()
+        if coupang_result.get('success'):
+            results['coupang']['synced'] = True
+            results['coupang']['count'] = coupang_result.get('synced_count', 0)
+        else:
+            results['coupang']['error'] = coupang_result.get('error', 'Unknown error')
+        
+        total_synced = results['naver']['count'] + results['coupang']['count']
+        
+        return jsonify({
+            'success': True,
+            'results': results,
+            'total_synced': total_synced,
+            'message': f'총 {total_synced}개의 새 주문이 동기화되었습니다'
+        })
+        
+    except Exception as e:
+        app.logger.error(f'[Order Sync] ❌ Error: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/orders')
 @login_required
 def orders():
@@ -3889,10 +4129,52 @@ def register_product(product_id):
 # MAIN
 # ============================================================================
 
+# Background scheduler for automatic order sync
+def start_order_sync_scheduler():
+    """
+    Start background scheduler to sync orders every 10 minutes
+    """
+    import threading
+    import time
+    
+    def sync_loop():
+        app.logger.info('[Order Sync Scheduler] 🚀 Started')
+        while True:
+            try:
+                time.sleep(600)  # Wait 10 minutes
+                
+                with app.app_context():
+                    app.logger.info('[Order Sync Scheduler] 🔄 Running automatic sync...')
+                    
+                    # Sync Naver
+                    naver_result = sync_naver_orders()
+                    if naver_result.get('success'):
+                        count = naver_result.get('synced_count', 0)
+                        if count > 0:
+                            app.logger.info(f'[Order Sync Scheduler] ✅ Naver: {count} new orders')
+                    
+                    # Sync Coupang
+                    coupang_result = sync_coupang_orders()
+                    if coupang_result.get('success'):
+                        count = coupang_result.get('synced_count', 0)
+                        if count > 0:
+                            app.logger.info(f'[Order Sync Scheduler] ✅ Coupang: {count} new orders')
+                    
+            except Exception as e:
+                app.logger.error(f'[Order Sync Scheduler] ❌ Error: {str(e)}')
+    
+    # Start in background thread
+    thread = threading.Thread(target=sync_loop, daemon=True)
+    thread.start()
+    app.logger.info('[Order Sync Scheduler] ✅ Scheduler started (10 min interval)')
+
 if __name__ == '__main__':
     # Ensure required directories exist
     os.makedirs('static/processed_images', exist_ok=True)
     os.makedirs('static/exports', exist_ok=True)
+    
+    # Start automatic order sync scheduler
+    start_order_sync_scheduler()
     
     # Run app
     app.run(host='0.0.0.0', port=5000, debug=False)
