@@ -2277,7 +2277,356 @@ def generate_fallback_product_page(title, images):
 </div>
 """
 
+def remove_watermark_ai(image):
+    """
+    AI-based watermark removal using inpainting
+    Detects and removes text/logo watermarks
+    """
+    import cv2
+    import numpy as np
+    
+    # Convert PIL to OpenCV
+    img_array = np.array(image)
+    img_cv = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+    
+    # Convert to grayscale for text detection
+    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+    
+    # Detect text regions (likely watermarks)
+    # Method 1: Threshold for white/light text
+    _, thresh1 = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+    
+    # Method 2: Threshold for dark text
+    _, thresh2 = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)
+    
+    # Combine both masks
+    mask = cv2.bitwise_or(thresh1, thresh2)
+    
+    # Morphological operations to connect text
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    mask = cv2.dilate(mask, kernel, iterations=2)
+    
+    # Find contours (potential watermark regions)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # Create final mask for inpainting
+    inpaint_mask = np.zeros(gray.shape, dtype=np.uint8)
+    
+    # Filter contours (remove small noise, keep potential watermarks)
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        x, y, w, h = cv2.boundingRect(contour)
+        
+        # Heuristic: watermarks are usually in corners or edges
+        is_corner = (x < img_cv.shape[1] * 0.3 or x > img_cv.shape[1] * 0.7 or
+                    y < img_cv.shape[0] * 0.3 or y > img_cv.shape[0] * 0.7)
+        
+        # Size filter: not too small, not too large
+        if 500 < area < img_cv.shape[0] * img_cv.shape[1] * 0.1 and is_corner:
+            cv2.drawContours(inpaint_mask, [contour], -1, 255, -1)
+    
+    # Inpaint to remove watermarks
+    result = cv2.inpaint(img_cv, inpaint_mask, 3, cv2.INPAINT_TELEA)
+    
+    # Convert back to PIL
+    result_rgb = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
+    return Image.fromarray(result_rgb)
+
+def remove_background_ai(image):
+    """
+    AI-based background removal using GrabCut algorithm
+    Isolates the main product
+    """
+    import cv2
+    import numpy as np
+    
+    # Convert PIL to OpenCV
+    img_array = np.array(image)
+    img_cv = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+    
+    # Create mask
+    mask = np.zeros(img_cv.shape[:2], np.uint8)
+    
+    # Background and foreground models
+    bgd_model = np.zeros((1, 65), np.float64)
+    fgd_model = np.zeros((1, 65), np.float64)
+    
+    # Define ROI (assume product is in center 60% of image)
+    h, w = img_cv.shape[:2]
+    rect = (int(w*0.2), int(h*0.2), int(w*0.6), int(h*0.6))
+    
+    # Apply GrabCut
+    try:
+        cv2.grabCut(img_cv, mask, rect, bgd_model, fgd_model, 5, cv2.GC_INIT_WITH_RECT)
+        
+        # Create binary mask
+        mask2 = np.where((mask == 2) | (mask == 0), 0, 1).astype('uint8')
+        
+        # Apply mask
+        img_cv = img_cv * mask2[:, :, np.newaxis]
+        
+        # Convert to RGBA
+        result_rgb = cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB)
+        result_rgba = Image.fromarray(result_rgb).convert('RGBA')
+        
+        # Make background transparent
+        datas = result_rgba.getdata()
+        new_data = []
+        for item in datas:
+            # If pixel is black (background), make transparent
+            if item[0] < 10 and item[1] < 10 and item[2] < 10:
+                new_data.append((255, 255, 255, 0))
+            else:
+                new_data.append(item)
+        
+        result_rgba.putdata(new_data)
+        return result_rgba
+    
+    except Exception as e:
+        app.logger.warning(f'[Background Removal] Failed: {str(e)}, returning original')
+        return image.convert('RGBA')
+
+def create_optimized_background(product_image, product_type='general'):
+    """
+    Create optimized professional background for product
+    Based on product category (electronics, fashion, home, etc.)
+    """
+    from PIL import ImageDraw, ImageFilter
+    
+    width, height = product_image.size
+    
+    # Background styles by product type
+    backgrounds = {
+        'electronics': {
+            'gradient_start': (240, 248, 255),  # Light blue
+            'gradient_end': (230, 230, 250),    # Lavender
+            'accent': (100, 149, 237)           # Cornflower blue
+        },
+        'fashion': {
+            'gradient_start': (255, 250, 250),  # Snow white
+            'gradient_end': (255, 240, 245),    # Lavender blush
+            'accent': (255, 182, 193)           # Light pink
+        },
+        'home': {
+            'gradient_start': (250, 250, 240),  # Ivory
+            'gradient_end': (245, 245, 220),    # Beige
+            'accent': (210, 180, 140)           # Tan
+        },
+        'general': {
+            'gradient_start': (255, 255, 255),  # Pure white
+            'gradient_end': (248, 248, 255),    # Ghost white
+            'accent': (220, 220, 220)           # Light gray
+        }
+    }
+    
+    style = backgrounds.get(product_type, backgrounds['general'])
+    
+    # Create gradient background
+    background = Image.new('RGB', (width, height), style['gradient_start'])
+    draw = ImageDraw.Draw(background)
+    
+    # Radial gradient effect
+    for i in range(min(width, height) // 2):
+        alpha = i / (min(width, height) // 2)
+        color = tuple(int(style['gradient_start'][j] * (1 - alpha) + 
+                         style['gradient_end'][j] * alpha) for j in range(3))
+        
+        draw.ellipse([width//2 - i, height//2 - i, 
+                     width//2 + i, height//2 + i], 
+                    fill=color, outline=color)
+    
+    # Add subtle decorative elements
+    # Corner accents
+    accent_size = min(width, height) // 8
+    
+    # Top-left accent
+    draw.arc([0, 0, accent_size*2, accent_size*2], 
+            start=180, end=270, fill=style['accent'], width=3)
+    
+    # Bottom-right accent
+    draw.arc([width - accent_size*2, height - accent_size*2, width, height], 
+            start=0, end=90, fill=style['accent'], width=3)
+    
+    # Apply subtle blur for professional look
+    background = background.filter(ImageFilter.GaussianBlur(radius=2))
+    
+    return background
+
 def process_product_image(image_url, chinese_text_regions=None):
+    """
+    ULTIMATE Professional Image Processing Pipeline:
+    1. Download image
+    2. AI Watermark removal
+    3. AI Background removal  
+    4. Optimized background creation
+    5. Quality enhancement
+    6. Professional effects (shadow, border)
+    7. Promotional badges
+    8. Korean text overlay
+    """
+    try:
+        import cv2
+        import numpy as np
+        
+        app.logger.info(f'[Image Pro] 🎨 Starting ULTIMATE processing for: {image_url}')
+        
+        # Download image
+        response = requests.get(image_url, timeout=15)
+        original_image = Image.open(io.BytesIO(response.content))
+        
+        # Convert to RGB
+        if original_image.mode != 'RGB':
+            original_image = original_image.convert('RGB')
+        
+        app.logger.info(f'[Image Pro] 📥 Downloaded: {original_image.size}')
+        
+        # === STEP 1: AI Watermark Removal ===
+        app.logger.info('[Image Pro] 🧹 Removing watermarks...')
+        no_watermark = remove_watermark_ai(original_image)
+        
+        # === STEP 2: AI Background Removal ===
+        app.logger.info('[Image Pro] ✂️ Removing background...')
+        no_background = remove_background_ai(no_watermark)
+        
+        # === STEP 3: Create Optimized Background ===
+        app.logger.info('[Image Pro] 🎨 Creating optimized background...')
+        
+        # Detect product type from image (simple heuristic)
+        # In production, use product title/category
+        new_background = create_optimized_background(no_background, 'general')
+        
+        # Composite product on new background
+        final_image = new_background.copy()
+        final_image.paste(no_background, (0, 0), no_background)
+        
+        # === STEP 4: Quality Enhancement ===
+        app.logger.info('[Image Pro] ⚡ Enhancing quality...')
+        from PIL import ImageEnhance
+        
+        # Brightness
+        enhancer = ImageEnhance.Brightness(final_image)
+        final_image = enhancer.enhance(1.1)
+        
+        # Contrast
+        enhancer = ImageEnhance.Contrast(final_image)
+        final_image = enhancer.enhance(1.15)
+        
+        # Sharpness
+        enhancer = ImageEnhance.Sharpness(final_image)
+        final_image = enhancer.enhance(1.3)
+        
+        # Color saturation
+        enhancer = ImageEnhance.Color(final_image)
+        final_image = enhancer.enhance(1.1)
+        
+        # === STEP 5: Professional Border ===
+        app.logger.info('[Image Pro] 🖼️ Adding border...')
+        border_size = 30
+        bordered = Image.new('RGB', 
+                            (final_image.width + border_size*2, 
+                             final_image.height + border_size*2),
+                            (255, 255, 255))
+        bordered.paste(final_image, (border_size, border_size))
+        final_image = bordered
+        
+        # === STEP 6: Shadow Effect ===
+        app.logger.info('[Image Pro] 💫 Adding shadow...')
+        shadow_layer = Image.new('RGBA', final_image.size, (255, 255, 255, 0))
+        shadow_draw = ImageDraw.Draw(shadow_layer)
+        
+        # Multiple shadow layers for soft effect
+        for offset in range(8, 0, -2):
+            alpha = int(40 * (offset / 8))
+            shadow_draw.rounded_rectangle(
+                [offset, offset, 
+                 final_image.width - offset, 
+                 final_image.height - offset],
+                radius=15,
+                fill=(0, 0, 0, alpha)
+            )
+        
+        # Blend shadow
+        final_rgb = final_image.convert('RGBA')
+        final_rgb = Image.alpha_composite(shadow_layer, final_rgb)
+        final_image = final_rgb.convert('RGB')
+        
+        # === STEP 7: Promotional Badges ===
+        app.logger.info('[Image Pro] 🏷️ Adding badges...')
+        draw = ImageDraw.Draw(final_image)
+        
+        try:
+            font_badge = ImageFont.truetype('/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc', 32)
+            font_small = ImageFont.truetype('/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc', 20)
+        except:
+            font_badge = font_small = ImageFont.load_default()
+        
+        # Badge 1: "무료배송" (Top-left)
+        badge_configs = [
+            {'text': '무료배송', 'pos': (40, 40), 'color': (255, 87, 51), 'size': (150, 55)},
+            {'text': '베스트', 'pos': (final_image.width - 140, 40), 'color': (52, 199, 89), 'size': (100, 55)},
+            {'text': '품질보증', 'pos': (40, final_image.height - 95), 'color': (0, 122, 255), 'size': (130, 55)}
+        ]
+        
+        for badge in badge_configs:
+            x, y = badge['pos']
+            w, h = badge['size']
+            
+            # Shadow for badge
+            draw.rounded_rectangle([x+3, y+3, x+w+3, y+h+3], 
+                                  radius=10, fill=(0, 0, 0, 60))
+            
+            # Badge background
+            draw.rounded_rectangle([x, y, x+w, y+h], 
+                                  radius=10, fill=badge['color'])
+            
+            # Badge text
+            text_bbox = draw.textbbox((0, 0), badge['text'], font=font_small)
+            text_w = text_bbox[2] - text_bbox[0]
+            text_h = text_bbox[3] - text_bbox[1]
+            text_x = x + (w - text_w) // 2
+            text_y = y + (h - text_h) // 2
+            
+            draw.text((text_x, text_y), badge['text'], 
+                     fill=(255, 255, 255), font=font_small)
+        
+        # === STEP 8: Korean Text Overlay (if Chinese regions provided) ===
+        if chinese_text_regions:
+            app.logger.info('[Image Pro] 🔤 Adding Korean text...')
+            for region in chinese_text_regions:
+                x, y, w, h = region['bbox']
+                korean_text = region.get('korean_text', '')
+                
+                # Rounded box
+                draw.rounded_rectangle([x, y, x+w, y+h], 
+                                      radius=8, 
+                                      fill=(255, 255, 255, 240))
+                
+                # Text
+                draw.text((x+10, y+10), korean_text, 
+                         fill=(0, 0, 0), font=font_small)
+        
+        # === STEP 9: Save Final Image ===
+        output = io.BytesIO()
+        final_image.save(output, format='PNG', quality=95, optimize=True)
+        output.seek(0)
+        
+        # Save to disk
+        filename = f"ultimate_{int(time.time())}_{os.path.basename(image_url).split('?')[0]}.png"
+        filepath = os.path.join('static', 'processed_images', filename)
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        
+        with open(filepath, 'wb') as f:
+            f.write(output.getvalue())
+        
+        app.logger.info(f'[Image Pro] ✅ ULTIMATE processing complete: {filename}')
+        return f'/static/processed_images/{filename}'
+    
+    except Exception as e:
+        app.logger.error(f'[Image Pro] ❌ Processing failed: {str(e)}')
+        import traceback
+        app.logger.error(traceback.format_exc())
+        log_activity('content', f'Image processing failed: {str(e)}', 'error')
+        return image_url
     """
     Professional image processing for marketplace listing
     - Remove background (optional)
