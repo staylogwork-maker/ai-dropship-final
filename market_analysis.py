@@ -58,7 +58,7 @@ def analyze_naver_market(keyword, client_id, client_secret):
         if not items:
             return {
                 'success': False,
-                'error': 'No products found',
+                'error': f'"{keyword}" 검색 결과가 없습니다. 다른 키워드를 사용해보세요.',
                 'timestamp': datetime.now().isoformat()
             }
         
@@ -73,9 +73,16 @@ def analyze_naver_market(keyword, client_id, client_secret):
                 continue
         
         if not prices:
+            # 더 자세한 에러 메시지
             return {
                 'success': False,
-                'error': 'No valid prices found',
+                'error': f'가격 정보가 있는 제품을 찾을 수 없습니다. (검색된 제품: {len(items)}개, 유효한 가격: 0개)',
+                'details': {
+                    'searched_keyword': keyword,
+                    'total_items': len(items),
+                    'valid_prices': 0,
+                    'suggestion': '다른 키워드로 검색하거나, 더 일반적인 제품명을 사용해보세요.'
+                },
                 'timestamp': datetime.now().isoformat()
             }
         

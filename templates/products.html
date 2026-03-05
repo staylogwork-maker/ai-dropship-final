@@ -321,7 +321,15 @@
                 document.body.removeChild(loadingDiv);
                 
                 if (!result.success) {
-                    alert('❌ 시장 분석 실패: ' + (result.error || '알 수 없는 오류'));
+                    // 더 친절한 에러 메시지 표시
+                    let errorMessage = '❌ 시장 분석 실패\n\n';
+                    errorMessage += (result.error || '알 수 없는 오류');
+                    
+                    if (result.details && result.details.suggestion) {
+                        errorMessage += '\n\n💡 ' + result.details.suggestion;
+                    }
+                    
+                    alert(errorMessage);
                     return;
                 }
                 

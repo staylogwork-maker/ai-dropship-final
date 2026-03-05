@@ -4486,21 +4486,50 @@ def analyze_product_market(product_id):
             'error': '네이버 API 인증 정보가 설정되지 않았습니다. 설정 페이지에서 Client ID와 Secret을 입력해주세요.'
         }), 400
     
-    # 키워드 추출 (상품명에서)
-    title = product['title_kr'] or product['title_cn']
+    # 키워드 추출 (우선순위: keywords > title_kr > title_cn의 첫 2-3 단어)
+    keyword = None
+    
+    # 1. keywords 필드가 있으면 우선 사용
+    if product['keywords']:
+        keyword = product['keywords'].split(',')[0].strip()  # 첫 번째 키워드
+        app.logger.info(f'[Market Analysis] Using keyword from keywords field: {keyword}')
+    
+    # 2. title_kr이 있으면 사용
+    elif product['title_kr']:
+        keyword = product['title_kr']
+        # 너무 길면 첫 3단어만
+        words = keyword.split()
+        if len(words) > 3:
+            keyword = ' '.join(words[:3])
+        app.logger.info(f'[Market Analysis] Using Korean title (truncated): {keyword}')
+    
+    # 3. title_cn만 있으면 첫 50자 사용
+    else:
+        title_cn = product['title_cn'] or ''
+        keyword = title_cn[:50] if len(title_cn) > 50 else title_cn
+        app.logger.warning(f'[Market Analysis] ⚠️ Using Chinese/English title: {keyword}')
+    
+    if not keyword:
+        conn.close()
+        return jsonify({
+            'success': False,
+            'error': '상품 키워드를 추출할 수 없습니다.'
+        }), 400
     
     # 시장 분석 실행
     from market_analysis import analyze_naver_market
     
-    app.logger.info(f'[Market Analysis] Analyzing product {product_id}: {title[:50]}...')
+    app.logger.info(f'[Market Analysis] Analyzing product {product_id} with keyword: {keyword}')
     
-    result = analyze_naver_market(title, naver_client_id, naver_client_secret)
+    result = analyze_naver_market(keyword, naver_client_id, naver_client_secret)
     
     if not result.get('success'):
         conn.close()
+        # 에러 details도 함께 전달
         return jsonify({
             'success': False,
-            'error': result.get('error', '시장 분석 실패')
+            'error': result.get('error', '시장 분석 실패'),
+            'details': result.get('details', {})
         }), 500
     
     # 쿠팡 API 분석 (선택적)
