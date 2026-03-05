@@ -4119,11 +4119,12 @@ def dashboard():
                          monthly_profit_data=json.dumps(monthly_profit_data),
                          recent_logs=recent_logs)
 
-@app.route('/blue-ocean')
-@login_required
-def blue_ocean_page():
-    """Blue Ocean Discovery page"""
-    return render_template('blue_ocean.html')
+# 🔧 REMOVED: Blue Ocean page removed - use Dashboard "AI 소싱 시작" instead
+# @app.route('/blue-ocean')
+# @login_required
+# def blue_ocean_page():
+#     """Blue Ocean Discovery page"""
+#     return render_template('blue_ocean.html')
 
 @app.route('/products')
 @login_required
