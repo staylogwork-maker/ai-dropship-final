@@ -35,7 +35,6 @@ import schedule
 import threading
 import logging
 from logging.handlers import RotatingFileHandler
-from market_analysis import analyze_naver_market, get_naver_keyword_trend
 
 # Set Korea timezone globally
 KST = pytz.timezone('Asia/Seoul')
@@ -1016,162 +1015,6 @@ def parse_smart_price(price_text):
     prices = [float(n) for n in numbers]
     return min(prices)
 
-# ============================================================================
-# ALIEXPRESS OFFICIAL API INTEGRATION
-# ============================================================================
-
-def search_aliexpress_official(keyword, max_results=50):
-    """
-    Search AliExpress using Official Affiliate API
-    
-    Benefits:
-    - ✅ FREE (no ScrapingAnt cost)
-    - ✅ 100% success rate (no anti-bot blocks)
-    - ✅ Official product data
-    - ✅ Affiliate links included
-    
-    Args:
-        keyword (str): Search keyword
-        max_results (int): Maximum products to return (default 50)
-    
-    Returns:
-        dict: {
-            'products': [
-                {
-                    'title': str,
-                    'price': float (USD),
-                    'original_price': float,
-                    'url': str (affiliate link),
-                    'image': str,
-                    'product_id': str,
-                    'sale_price': float,
-                    'discount': str,
-                    'orders': int,
-                    'rating': float,
-                    'source': 'aliexpress_api'
-                }
-            ],
-            'count': int
-        }
-    """
-    import time
-    import hashlib
-    
-    app.logger.info(f'[AliExpress API] ========================================')
-    app.logger.info(f'[AliExpress API] 🚀 Official API search for: {keyword}')
-    
-    # Get API credentials from config
-    app_key = get_config('aliexpress_app_key')
-    app_secret = get_config('aliexpress_app_secret')
-    
-    if not app_key or not app_secret:
-        app.logger.error('[AliExpress API] ❌ Missing API credentials')
-        app.logger.error('[AliExpress API] Please configure in Settings:')
-        app.logger.error('[AliExpress API]   - aliexpress_app_key')
-        app.logger.error('[AliExpress API]   - aliexpress_app_secret')
-        return {'products': [], 'count': 0}
-    
-    # API endpoint
-    endpoint = "https://api-sg.aliexpress.com/sync"
-    
-    # GMT+8 timestamp
-    timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(time.time() + 8*3600))
-    
-    # Request parameters
-    params = {
-        'app_key': app_key,
-        'method': 'aliexpress.affiliate.product.query',
-        'timestamp': timestamp,
-        'format': 'json',
-        'v': '2.0',
-        'sign_method': 'md5',
-        'keywords': keyword,
-        'page_size': str(min(max_results, 50)),  # API max: 50
-        'target_currency': 'USD',
-        'target_language': 'EN',
-        'sort': 'SALE_PRICE_ASC'  # Sort by price (low to high)
-    }
-    
-    # Generate signature
-    sorted_params = sorted(params.items())
-    sign_string = app_secret + ''.join([f'{k}{v}' for k, v in sorted_params]) + app_secret
-    signature = hashlib.md5(sign_string.encode('utf-8')).hexdigest().upper()
-    params['sign'] = signature
-    
-    try:
-        app.logger.info(f'[AliExpress API] 📡 Sending request...')
-        response = requests.get(endpoint, params=params, timeout=30)
-        
-        app.logger.info(f'[AliExpress API] 📊 Status: {response.status_code}')
-        
-        if response.status_code != 200:
-            app.logger.error(f'[AliExpress API] ❌ HTTP {response.status_code}')
-            return {'products': [], 'count': 0}
-        
-        data = response.json()
-        
-        # Check for API errors
-        if 'error_response' in data:
-            error = data['error_response']
-            app.logger.error(f'[AliExpress API] ❌ API Error: {error.get("msg", "Unknown")}')
-            app.logger.error(f'[AliExpress API]    Code: {error.get("code")} / Sub: {error.get("sub_code")}')
-            return {'products': [], 'count': 0}
-        
-        # Parse response
-        if 'aliexpress_affiliate_product_query_response' not in data:
-            app.logger.error('[AliExpress API] ❌ Unexpected response format')
-            return {'products': [], 'count': 0}
-        
-        result = data['aliexpress_affiliate_product_query_response']['resp_result']['result']
-        
-        if result['total_record_count'] == 0:
-            app.logger.warning(f'[AliExpress API] ⚠️  No products found for: {keyword}')
-            return {'products': [], 'count': 0}
-        
-        # Extract products
-        raw_products = result['products']['product']
-        products = []
-        
-        for product in raw_products:
-            try:
-                # Parse price
-                sale_price = float(product.get('target_sale_price', 0))
-                original_price = float(product.get('target_original_price', sale_price))
-                
-                # Calculate discount
-                discount = 0
-                if original_price > sale_price:
-                    discount = int((1 - sale_price / original_price) * 100)
-                
-                products.append({
-                    'title': product.get('product_title', 'Untitled'),
-                    'price': sale_price,
-                    'original_price': original_price,
-                    'url': product.get('promotion_link', product.get('product_detail_url', '')),
-                    'image': product.get('product_main_image_url', ''),
-                    'product_id': str(product.get('product_id', '')),
-                    'sale_price': sale_price,
-                    'discount': f'-{discount}%' if discount > 0 else '',
-                    'orders': 0,  # API doesn't provide order count
-                    'rating': 0.0,  # API doesn't provide rating
-                    'moq': 1,  # AliExpress default MOQ
-                    'source': 'aliexpress_api'
-                })
-            except Exception as e:
-                app.logger.error(f'[AliExpress API] Failed to parse product: {str(e)}')
-                continue
-        
-        app.logger.info(f'[AliExpress API] ✅ SUCCESS: {len(products)} products')
-        return {'products': products, 'count': len(products)}
-        
-    except Exception as e:
-        app.logger.error(f'[AliExpress API] ❌ Exception: {str(e)}')
-        return {'products': [], 'count': 0}
-
-# ============================================================================
-# LEGACY SCRAPING FUNCTIONS (DEPRECATED - USE OFFICIAL API)
-# ============================================================================
-
 def scrape_alibaba_search(keyword, max_results=50):
     """
     Scrape Alibaba.com with ULTIMATE anti-bot bypass
@@ -1620,34 +1463,40 @@ def scrape_aliexpress_search(keyword, max_results=50):
 
 def search_integrated_hybrid(keyword, max_results=50):
     """
-    🚀 OFFICIAL API SOURCING ENGINE (Updated 2026-03-05)
-    
-    ✅ Changed: Now uses AliExpress Official Affiliate API
-    ❌ Removed: Alibaba.com (MOQ too high for dropshipping)
-    ❌ Removed: ScrapingAnt dependency ($79/month saved)
-    
-    Search AliExpress only using Official API
-    Filter by margin and select best products
+    🚀 HYBRID SOURCING ENGINE
+    Search Alibaba + AliExpress simultaneously
+    Merge results and select Top 3 based on price + margin + MOQ
     """
-    app.logger.info(f'[Search Engine] ========================================')
-    app.logger.info(f'[Search Engine] 🚀 Starting Official API search for: {keyword}')
-    app.logger.info(f'[Search Engine] Source: AliExpress Affiliate API')
+    app.logger.info(f'[Hybrid Engine] ========================================')
+    app.logger.info(f'[Hybrid Engine] 🚀 Starting HYBRID search for: {keyword}')
+    app.logger.info(f'[Hybrid Engine] Sources: Alibaba.com + AliExpress.com')
     
-    # Search AliExpress using Official API
-    app.logger.info('[Search Engine] Searching AliExpress via Official API...')
-    aliexpress_result = search_aliexpress_official(keyword, max_results)
-    all_products = aliexpress_result.get('products', [])
-    app.logger.info(f'[Search Engine] ✅ Found: {len(all_products)} products')
+    # Step 1: Search Alibaba
+    app.logger.info('[Hybrid Engine] Step 1: Searching Alibaba.com...')
+    alibaba_result = scrape_alibaba_search(keyword, max_results)
+    alibaba_products = alibaba_result.get('products', [])
+    app.logger.info(f'[Hybrid Engine] ✅ Alibaba: {len(alibaba_products)} products')
     
-    # Changed from: Alibaba + AliExpress scraping
-    # To: AliExpress Official API only
-    # Reason: MOQ=1 for dropshipping, 100% success rate, $0 cost
+    # ⏱️ Rate Limit Protection: Wait 6 seconds between Alibaba and AliExpress
+    import time
+    app.logger.info('[Hybrid Engine] 💤 Waiting 6 seconds (Rate Limit Protection)...')
+    time.sleep(6)
+    
+    # Step 2: Search AliExpress
+    app.logger.info('[Hybrid Engine] Step 2: Searching AliExpress.com...')
+    aliexpress_result = scrape_aliexpress_search(keyword, max_results)
+    aliexpress_products = aliexpress_result.get('products', [])
+    app.logger.info(f'[Hybrid Engine] ✅ AliExpress: {len(aliexpress_products)} products')
+    
+    # Step 3: Merge and compare
+    all_products = alibaba_products + aliexpress_products
+    app.logger.info(f'[Hybrid Engine] Step 3: Merging {len(all_products)} total products')
     
     if len(all_products) == 0:
-        app.logger.error('[Search Engine] ❌ FAILURE: No products found')
-        app.logger.error('[Search Engine] ❌ AliExpress API returned no results')
-        app.logger.error('[Search Engine] ℹ️  Try different keyword or check API credentials')
-        return {'products': [], 'count': 0, 'error': 'No products found'}
+        app.logger.error('[Hybrid Engine] ❌ FAILURE: No products found from either source')
+        app.logger.error('[Hybrid Engine] ❌ Both Alibaba and AliExpress scraping failed')
+        app.logger.error('[Hybrid Engine] ❌ Check ScrapingAnt logs above for specific blocking reasons')
+        return {'products': [], 'count': 0, 'error': 'No products found - anti-bot bypass failed'}
     
     # Calculate profitability for each product
     for product in all_products:
@@ -1665,19 +1514,19 @@ def search_integrated_hybrid(keyword, max_results=50):
             
             product['hybrid_score'] = price_score + (margin_score * 2) + (moq_score * 3)
             
-            app.logger.debug(f'[Product Score] {product["title"][:30]}: '
+            app.logger.debug(f'[Hybrid Score] {product["title"][:30]}: '
                            f'Price=${product["price"]:.2f}, '
                            f'Margin={analysis["margin"]:.1f}%, '
                            f'MOQ={product["moq"]}, '
                            f'Score={product["hybrid_score"]:.1f}')
         except Exception as e:
-            app.logger.error(f'[Search Engine] Failed to analyze product: {str(e)}')
+            app.logger.error(f'[Hybrid Engine] Failed to analyze product: {str(e)}')
             product['hybrid_score'] = 0
     
     # Sort by hybrid score (descending)
     all_products.sort(key=lambda x: x.get('hybrid_score', 0), reverse=True)
     
-    app.logger.info(f'[Search Engine] ✅ Search complete: {len(all_products)} products analyzed')
+    app.logger.info(f'[Hybrid Engine] ✅ HYBRID search complete: {len(all_products)} products analyzed')
     return {'products': all_products, 'count': len(all_products)}
 
 def analyze_product_profitability(price_cny):
@@ -1766,8 +1615,7 @@ def execute_smart_sourcing(keyword):
     # ========================================================================
     # Load configs from DB (NEVER use global variables)
     # ========================================================================
-    aliexpress_app_key = get_config('aliexpress_app_key', '')
-    aliexpress_app_secret = get_config('aliexpress_app_secret', '')
+    scrapingant_key = get_config('scrapingant_api_key', '')
     openai_key = get_config('openai_api_key', '')
     target_margin_rate = get_config('target_margin_rate', 30)
     cny_exchange_rate = get_config('cny_exchange_rate', 190)
@@ -1777,28 +1625,27 @@ def execute_smart_sourcing(keyword):
     debug_mode_enabled = debug_mode.lower() in ['true', '1', 'yes', 'on']
     
     app.logger.info('[Smart Sniper] 📋 Config loaded from DB:')
-    app.logger.info(f'  - AliExpress App Key: {aliexpress_app_key}')
-    app.logger.info(f'  - AliExpress Secret: {aliexpress_app_secret[:10]}**** (len: {len(aliexpress_app_secret)})')
+    app.logger.info(f'  - ScrapingAnt key: {scrapingant_key[:4]}**** (len: {len(scrapingant_key)})')
     app.logger.info(f'  - OpenAI key: {openai_key[:4]}**** (len: {len(openai_key)})')
     app.logger.info(f'  - Target margin: {target_margin_rate}%')
     app.logger.info(f'  - CNY rate: {cny_exchange_rate}')
     app.logger.info(f'  - 🐛 DEBUG MODE (Ignore Filters): {debug_mode_enabled}')
     
-    if not aliexpress_app_key or not aliexpress_app_secret:
-        app.logger.error('[Smart Sniper] ❌ CRITICAL: AliExpress API credentials missing')
-        app.logger.error('[Smart Sniper] Please configure App Key & Secret in database')
-        log_activity('sourcing', '❌ AliExpress API not configured', 'error')
+    if not scrapingant_key:
+        app.logger.error('[Smart Sniper] ❌ CRITICAL: ScrapingAnt API key is EMPTY')
+        app.logger.error('[Smart Sniper] Please configure API key in Settings page')
+        log_activity('sourcing', '❌ ScrapingAnt API key not configured', 'error')
         return {
             'success': False,
-            'error': 'AliExpress API credentials not configured. Contact system administrator.',
+            'error': 'ScrapingAnt API key not configured. Please set it in Settings.',
             'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0},
             'stage_stats': stage_stats
         }
     
-    # Step 1: 🚀 AliExpress Official API Search
-    log_activity('sourcing', f'Step 1/5: 🚀 AliExpress Official API Search for "{keyword}"', 'in_progress')
+    # Step 1: 🚀 HYBRID Search (Alibaba + AliExpress) - REAL DATA ONLY
+    log_activity('sourcing', f'Step 1/5: 🚀 HYBRID Search (Alibaba + AliExpress) for "{keyword}"', 'in_progress')
     
-    # 🚀 Real API search via AliExpress Affiliate API
+    # 🚀 Real HYBRID scraping (Alibaba + AliExpress) - NO TEST DATA
     results = search_integrated_hybrid(keyword, max_results=50)
     
     if 'error' in results:
@@ -1922,23 +1769,6 @@ def execute_smart_sourcing(keyword):
     # Step 4: Sort by net profit (descending)
     profitable_products.sort(key=lambda x: x['analysis']['profit'], reverse=True)
     
-    # Step 4.5: 🚫 Filter out previously rejected products
-    app.logger.info(f'[Smart Sniper] Checking for previously rejected products...')
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute('SELECT product_url FROM rejected_products WHERE keyword = ?', (keyword,))
-    rejected_urls = set(row[0] for row in cursor.fetchall())
-    conn.close()
-    
-    if rejected_urls:
-        app.logger.info(f'[Smart Sniper] Found {len(rejected_urls)} previously rejected products for keyword: {keyword}')
-        filtered_products = [p for p in profitable_products if p['url'] not in rejected_urls]
-        rejected_count = len(profitable_products) - len(filtered_products)
-        app.logger.info(f'[Smart Sniper] Filtered out {rejected_count} previously rejected products')
-        profitable_products = filtered_products
-    else:
-        app.logger.info(f'[Smart Sniper] No previously rejected products found')
-    
     # Step 5: Slice to Top 3 ONLY (or all products if debug mode)
     if debug_mode_enabled:
         # 🐛 DEBUG MODE: Return ALL products instead of just top 3
@@ -1947,7 +1777,7 @@ def execute_smart_sourcing(keyword):
         log_activity('sourcing', f'Step 4/5: 🐛 Debug mode: Top {len(top_3)} selected', 'warning')
     else:
         top_3 = profitable_products[:3]
-        log_activity('sourcing', f'Step 4/5: 🎯 Top 3 selected (sorted by profit, rejected products excluded)', 'success')
+        log_activity('sourcing', f'Step 4/5: 🎯 Top 3 selected (sorted by profit)', 'success')
     
     # 📊 STAGE 4: Record final count
     stage_stats['stage4_final'] = len(top_3)
@@ -1980,39 +1810,8 @@ def execute_smart_sourcing(keyword):
             'suggestion': f'No products found. Highest margin was {highest_margin:.1f}% (target: {target_margin}%). Consider lowering margin target or enabling Debug Mode.'
         }
     
-    # Step 5.5: 📊 Market Analysis (Naver Shopping)
-    app.logger.info(f'[Smart Sniper] 📊 Starting market analysis for keyword: {keyword}')
-    log_activity('sourcing', 'Step 5/5: 📊 Analyzing market prices (Naver Shopping)', 'in_progress')
-    
-    market_data = None
-    naver_client_id = get_config('naver_client_id', '')
-    naver_client_secret = get_config('naver_client_secret', '')
-    
-    if naver_client_id and naver_client_secret:
-        try:
-            market_data = analyze_naver_market(keyword, naver_client_id, naver_client_secret)
-            
-            if market_data.get('success'):
-                app.logger.info(f'[Market Analysis] ✅ SUCCESS')
-                app.logger.info(f'[Market Analysis] Total products analyzed: {market_data["analyzed_products"]}')
-                app.logger.info(f'[Market Analysis] Average price: ₩{market_data["avg_price"]:,}')
-                app.logger.info(f'[Market Analysis] Price range: ₩{market_data["min_price"]:,} ~ ₩{market_data["max_price"]:,}')
-                app.logger.info(f'[Market Analysis] Recommended price: ₩{market_data["recommended_price"]:,}')
-                app.logger.info(f'[Market Analysis] Market position: {market_data["analysis_summary"]["market_position"]}')
-                
-                log_activity('sourcing', f'✅ Market analysis: Avg ₩{market_data["avg_price"]:,}, Recommend ₩{market_data["recommended_price"]:,}', 'success')
-            else:
-                app.logger.warning(f'[Market Analysis] ⚠️ Failed: {market_data.get("error")}')
-                log_activity('sourcing', f'⚠️ Market analysis failed: {market_data.get("error")}', 'warning')
-        except Exception as e:
-            app.logger.error(f'[Market Analysis] ❌ Exception: {str(e)}')
-            market_data = None
-    else:
-        app.logger.warning('[Market Analysis] ⚠️ Naver API credentials not configured')
-        log_activity('sourcing', '⚠️ Market analysis skipped (API credentials missing)', 'warning')
-    
     # Step 6: Save Top 3 to Database
-    log_activity('sourcing', 'Step 6/6: 💾 Saving Top 3 to database', 'in_progress')
+    log_activity('sourcing', 'Step 5/5: 💾 Saving Top 3 to database', 'in_progress')
     app.logger.info(f'[Smart Sniper] Attempting to save {len(top_3)} products to database')
     
     conn = get_db()
@@ -2074,8 +1873,7 @@ def execute_smart_sourcing(keyword):
             'final_count': len(top_3)
         },
         'stage_stats': stage_stats,
-        'debug_mode_enabled': debug_mode_enabled,
-        'market_analysis': market_data  # 시장 분석 데이터 추가
+        'debug_mode_enabled': debug_mode_enabled
     }
 
 @app.route('/api/sourcing/start', methods=['POST'])
@@ -2146,55 +1944,6 @@ def start_sourcing():
     app.logger.info(f'=== Sourcing Completed: {result["stats"]["final_count"]} products ===')
     
     return jsonify(response_data)
-
-@app.route('/api/product/reject', methods=['POST'])
-@login_required
-def reject_product():
-    """
-    Mark a product as rejected so it won't be recommended again
-    
-    Request JSON:
-    {
-        "product_url": "https://...",
-        "product_title": "...",
-        "keyword": "..."
-    }
-    """
-    try:
-        data = request.json
-        product_url = data.get('product_url')
-        product_title = data.get('product_title', '')
-        keyword = data.get('keyword', '')
-        
-        if not product_url:
-            return jsonify({'success': False, 'error': 'product_url required'}), 400
-        
-        conn = get_db()
-        cursor = conn.cursor()
-        
-        # Insert or ignore (UNIQUE constraint)
-        cursor.execute('''
-            INSERT OR IGNORE INTO rejected_products (product_url, product_title, keyword)
-            VALUES (?, ?, ?)
-        ''', (product_url, product_title, keyword))
-        
-        conn.commit()
-        conn.close()
-        
-        app.logger.info(f'[Product Reject] URL: {product_url[:50]}...')
-        app.logger.info(f'[Product Reject] Title: {product_title[:50]}...')
-        app.logger.info(f'[Product Reject] Keyword: {keyword}')
-        
-        log_activity('sourcing', f'Product rejected: {product_title[:30]}...', 'info')
-        
-        return jsonify({
-            'success': True,
-            'message': 'Product marked as rejected'
-        })
-        
-    except Exception as e:
-        app.logger.error(f'[Product Reject] Error: {str(e)}')
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/sourcing/test-scraping', methods=['POST'])
 @login_required
@@ -4413,96 +4162,6 @@ def register_product(product_id):
     log_activity('marketplace', f'Product {product_id} registered to {marketplace}', 'success')
     
     return jsonify({'success': True, 'external_id': result.get('product_id', '')})
-
-@app.route('/api/products/<int:product_id>/market-analysis', methods=['GET', 'POST'])
-@login_required
-def analyze_product_market(product_id):
-    """개별 상품에 대한 네이버 시장 분석"""
-    conn = get_db()
-    cursor = conn.cursor()
-    
-    # 상품 정보 조회
-    cursor.execute('SELECT * FROM sourced_products WHERE id = ?', (product_id,))
-    product = cursor.fetchone()
-    
-    if not product:
-        conn.close()
-        return jsonify({'error': 'Product not found'}), 404
-    
-    # 이미 분석된 데이터가 있는지 확인 (GET 요청 시)
-    if request.method == 'GET' and product['market_analysis_json']:
-        try:
-            analysis = json.loads(product['market_analysis_json'])
-            conn.close()
-            return jsonify({
-                'success': True,
-                'cached': True,
-                'analysis': analysis
-            })
-        except:
-            pass
-    
-    # 네이버 API 인증 정보
-    naver_client_id = get_config('naver_client_id')
-    naver_client_secret = get_config('naver_client_secret')
-    
-    if not naver_client_id or not naver_client_secret:
-        conn.close()
-        return jsonify({
-            'success': False,
-            'error': '네이버 API 인증 정보가 설정되지 않았습니다. 설정 페이지에서 Client ID와 Secret을 입력해주세요.'
-        }), 400
-    
-    # 키워드 추출 (상품명에서)
-    title = product['title_kr'] or product['title_cn']
-    
-    # 시장 분석 실행
-    from market_analysis import analyze_naver_market
-    
-    app.logger.info(f'[Market Analysis] Analyzing product {product_id}: {title[:50]}...')
-    
-    result = analyze_naver_market(title, naver_client_id, naver_client_secret)
-    
-    if not result.get('success'):
-        conn.close()
-        return jsonify({
-            'success': False,
-            'error': result.get('error', '시장 분석 실패')
-        }), 500
-    
-    # 분석 결과를 DB에 저장
-    analysis_data = {
-        'keyword': result['keyword'],
-        'total_products': result['total_products'],
-        'analyzed_products': result['analyzed_products'],
-        'avg_price': result['avg_price'],
-        'median_price': result['median_price'],
-        'min_price': result['min_price'],
-        'max_price': result['max_price'],
-        'q1_price': result['q1_price'],
-        'q3_price': result['q3_price'],
-        'recommended_price': result['recommended_price'],
-        'price_distribution': result['price_distribution'],
-        'analysis_summary': result['analysis_summary'],
-        'timestamp': result['timestamp']
-    }
-    
-    cursor.execute('''
-        UPDATE sourced_products 
-        SET market_analysis_json = ? 
-        WHERE id = ?
-    ''', (json.dumps(analysis_data, ensure_ascii=False), product_id))
-    
-    conn.commit()
-    conn.close()
-    
-    app.logger.info(f'[Market Analysis] ✅ Analysis completed for product {product_id}')
-    
-    return jsonify({
-        'success': True,
-        'cached': False,
-        'analysis': analysis_data
-    })
 
 # ============================================================================
 # MAIN

@@ -88,6 +88,9 @@
                             <a href="/products/{{ product.id }}" class="text-indigo-600 hover:text-indigo-900 mr-3">
                                 ✏️ 수정
                             </a>
+                            <button onclick="viewMarketAnalysis({{ product.id }})" class="text-cyan-600 hover:text-cyan-900 mr-3">
+                                📊 시장분석
+                            </button>
                             {% if product.status == 'pending' %}
                             <button onclick="generateContent({{ product.id }})" class="text-blue-600 hover:text-blue-900 mr-3">
                                 📝 콘텐츠 생성
@@ -286,6 +289,157 @@
                     alert('⚠️ 상품 삭제 실패: ' + (deleteResult.error || '알 수 없는 오류'));
                 }
             } catch (error) {
+                alert('❌ 오류: ' + error.message);
+            }
+        }
+        
+        async function viewMarketAnalysis(productId) {
+            try {
+                // Show loading message
+                const loadingDiv = document.createElement('div');
+                loadingDiv.id = 'market-analysis-loading';
+                loadingDiv.innerHTML = `
+                    <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 9999; display: flex; align-items: center; justify-content: center;">
+                        <div style="background: white; padding: 40px; border-radius: 12px; text-align: center;">
+                            <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
+                            <div style="font-size: 18px; color: #333; margin-bottom: 10px;">네이버 시장 분석 중...</div>
+                            <div style="font-size: 14px; color: #666;">실시간 가격 데이터를 조회하고 있습니다</div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(loadingDiv);
+                
+                // Call API
+                const response = await fetch(`/api/products/${productId}/market-analysis`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                
+                const result = await response.json();
+                
+                // Remove loading
+                document.body.removeChild(loadingDiv);
+                
+                if (!result.success) {
+                    alert('❌ 시장 분석 실패: ' + (result.error || '알 수 없는 오류'));
+                    return;
+                }
+                
+                const analysis = result.analysis;
+                
+                // Show detailed analysis modal
+                const modalHTML = `
+                    <div id="market-analysis-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 20px;" onclick="if(event.target.id === 'market-analysis-modal') document.body.removeChild(this);">
+                        <div style="background: white; border-radius: 16px; max-width: 900px; width: 100%; max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3);" onclick="event.stopPropagation();">
+                            
+                            <!-- Header -->
+                            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 16px 16px 0 0;">
+                                <h2 style="font-size: 28px; font-weight: bold; margin: 0 0 10px 0;">📊 네이버 시장 분석 보고서</h2>
+                                <p style="margin: 0; opacity: 0.9; font-size: 14px;">${result.cached ? '✅ 캐시된 데이터' : '🔄 실시간 분석 완료'} • ${new Date(analysis.timestamp).toLocaleString('ko-KR')}</p>
+                            </div>
+                            
+                            <!-- Content -->
+                            <div style="padding: 30px;">
+                                
+                                <!-- Keyword -->
+                                <div style="background: #f7fafc; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                                    <div style="font-size: 14px; color: #718096; margin-bottom: 8px;">분석 키워드</div>
+                                    <div style="font-size: 20px; font-weight: 600; color: #2d3748;">${analysis.keyword}</div>
+                                </div>
+                                
+                                <!-- Key Metrics -->
+                                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px;">
+                                    <div style="background: #ebf8ff; padding: 20px; border-radius: 12px; border: 2px solid #bee3f8;">
+                                        <div style="font-size: 13px; color: #2c5282; margin-bottom: 8px;">📦 분석 상품 수</div>
+                                        <div style="font-size: 24px; font-weight: bold; color: #2c5282;">${analysis.analyzed_products.toLocaleString()}개</div>
+                                        <div style="font-size: 11px; color: #4a5568; margin-top: 4px;">전체 ${analysis.total_products.toLocaleString()}개</div>
+                                    </div>
+                                    <div style="background: #f0fff4; padding: 20px; border-radius: 12px; border: 2px solid #9ae6b4;">
+                                        <div style="font-size: 13px; color: #276749; margin-bottom: 8px;">💰 평균 가격</div>
+                                        <div style="font-size: 24px; font-weight: bold; color: #276749;">₩${analysis.avg_price.toLocaleString()}</div>
+                                        <div style="font-size: 11px; color: #4a5568; margin-top: 4px;">중앙값 ₩${analysis.median_price.toLocaleString()}</div>
+                                    </div>
+                                    <div style="background: #fef5e7; padding: 20px; border-radius: 12px; border: 2px solid #fbd38d;">
+                                        <div style="font-size: 13px; color: #7c2d12; margin-bottom: 8px;">🎯 권장 판매가</div>
+                                        <div style="font-size: 24px; font-weight: bold; color: #c05621;">₩${analysis.recommended_price.toLocaleString()}</div>
+                                        <div style="font-size: 11px; color: #4a5568; margin-top: 4px;">평균 대비 ${Math.round((1 - analysis.recommended_price / analysis.avg_price) * 100)}% 저렴</div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Price Range -->
+                                <div style="background: white; border: 2px solid #e2e8f0; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                                    <h3 style="font-size: 16px; font-weight: 600; color: #2d3748; margin: 0 0 15px 0;">📈 가격 범위</h3>
+                                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                                        <div>
+                                            <div style="font-size: 12px; color: #718096; margin-bottom: 5px;">최저가</div>
+                                            <div style="font-size: 20px; font-weight: 600; color: #48bb78;">₩${analysis.min_price.toLocaleString()}</div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 12px; color: #718096; margin-bottom: 5px;">최고가</div>
+                                            <div style="font-size: 20px; font-weight: 600; color: #f56565;">₩${analysis.max_price.toLocaleString()}</div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 12px; color: #718096; margin-bottom: 5px;">하위 25% (Q1)</div>
+                                            <div style="font-size: 20px; font-weight: 600; color: #4299e1;">₩${analysis.q1_price.toLocaleString()}</div>
+                                        </div>
+                                        <div>
+                                            <div style="font-size: 12px; color: #718096; margin-bottom: 5px;">상위 25% (Q3)</div>
+                                            <div style="font-size: 20px; font-weight: 600; color: #ed8936;">₩${analysis.q3_price.toLocaleString()}</div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-top: 15px; padding: 12px; background: #edf2f7; border-radius: 8px;">
+                                        <div style="font-size: 13px; color: #4a5568;">💡 경쟁 가격대 (25%-75%)</div>
+                                        <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-top: 5px;">${analysis.analysis_summary.competitive_price_range}</div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Price Distribution -->
+                                ${Object.keys(analysis.price_distribution).length > 0 ? `
+                                <div style="background: white; border: 2px solid #e2e8f0; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                                    <h3 style="font-size: 16px; font-weight: 600; color: #2d3748; margin: 0 0 15px 0;">📊 가격 분포</h3>
+                                    ${Object.entries(analysis.price_distribution).map(([range, data]) => `
+                                        <div style="margin-bottom: 12px;">
+                                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                                <span style="font-size: 13px; color: #4a5568;">${range}</span>
+                                                <span style="font-size: 13px; font-weight: 600; color: #2d3748;">${data.count}개 (${data.percentage}%)</span>
+                                            </div>
+                                            <div style="background: #e2e8f0; height: 8px; border-radius: 4px; overflow: hidden;">
+                                                <div style="background: linear-gradient(90deg, #667eea, #764ba2); height: 100%; width: ${data.percentage}%;"></div>
+                                            </div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                ` : ''}
+                                
+                                <!-- Market Position -->
+                                <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                                    <h3 style="font-size: 16px; font-weight: 600; margin: 0 0 10px 0;">🎯 시장 포지셔닝</h3>
+                                    <div style="font-size: 18px; font-weight: 500;">${analysis.analysis_summary.market_position}</div>
+                                    <div style="font-size: 14px; opacity: 0.9; margin-top: 8px;">${analysis.analysis_summary.price_competitiveness}</div>
+                                </div>
+                                
+                                <!-- Action Buttons -->
+                                <div style="display: flex; gap: 10px;">
+                                    <button onclick="document.body.removeChild(document.getElementById('market-analysis-modal'))" style="flex: 1; padding: 14px; background: #667eea; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">
+                                        ✅ 확인
+                                    </button>
+                                    <button onclick="window.open('/products/${productId}', '_blank')" style="flex: 1; padding: 14px; background: #48bb78; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;">
+                                        📝 상품 상세
+                                    </button>
+                                </div>
+                                
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.insertAdjacentHTML('beforeend', modalHTML);
+                
+            } catch (error) {
+                // Remove loading if exists
+                const loading = document.getElementById('market-analysis-loading');
+                if (loading) document.body.removeChild(loading);
+                
                 alert('❌ 오류: ' + error.message);
             }
         }
