@@ -1921,6 +1921,23 @@ def execute_smart_sourcing(keyword):
     # Step 4: Sort by net profit (descending)
     profitable_products.sort(key=lambda x: x['analysis']['profit'], reverse=True)
     
+    # Step 4.5: 🚫 Filter out previously rejected products
+    app.logger.info(f'[Smart Sniper] Checking for previously rejected products...')
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute('SELECT product_url FROM rejected_products WHERE keyword = ?', (keyword,))
+    rejected_urls = set(row[0] for row in cursor.fetchall())
+    conn.close()
+    
+    if rejected_urls:
+        app.logger.info(f'[Smart Sniper] Found {len(rejected_urls)} previously rejected products for keyword: {keyword}')
+        filtered_products = [p for p in profitable_products if p['url'] not in rejected_urls]
+        rejected_count = len(profitable_products) - len(filtered_products)
+        app.logger.info(f'[Smart Sniper] Filtered out {rejected_count} previously rejected products')
+        profitable_products = filtered_products
+    else:
+        app.logger.info(f'[Smart Sniper] No previously rejected products found')
+    
     # Step 5: Slice to Top 3 ONLY (or all products if debug mode)
     if debug_mode_enabled:
         # 🐛 DEBUG MODE: Return ALL products instead of just top 3
@@ -1929,7 +1946,7 @@ def execute_smart_sourcing(keyword):
         log_activity('sourcing', f'Step 4/5: 🐛 Debug mode: Top {len(top_3)} selected', 'warning')
     else:
         top_3 = profitable_products[:3]
-        log_activity('sourcing', f'Step 4/5: 🎯 Top 3 selected (sorted by profit)', 'success')
+        log_activity('sourcing', f'Step 4/5: 🎯 Top 3 selected (sorted by profit, rejected products excluded)', 'success')
     
     # 📊 STAGE 4: Record final count
     stage_stats['stage4_final'] = len(top_3)
@@ -2096,6 +2113,55 @@ def start_sourcing():
     app.logger.info(f'=== Sourcing Completed: {result["stats"]["final_count"]} products ===')
     
     return jsonify(response_data)
+
+@app.route('/api/product/reject', methods=['POST'])
+@login_required
+def reject_product():
+    """
+    Mark a product as rejected so it won't be recommended again
+    
+    Request JSON:
+    {
+        "product_url": "https://...",
+        "product_title": "...",
+        "keyword": "..."
+    }
+    """
+    try:
+        data = request.json
+        product_url = data.get('product_url')
+        product_title = data.get('product_title', '')
+        keyword = data.get('keyword', '')
+        
+        if not product_url:
+            return jsonify({'success': False, 'error': 'product_url required'}), 400
+        
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Insert or ignore (UNIQUE constraint)
+        cursor.execute('''
+            INSERT OR IGNORE INTO rejected_products (product_url, product_title, keyword)
+            VALUES (?, ?, ?)
+        ''', (product_url, product_title, keyword))
+        
+        conn.commit()
+        conn.close()
+        
+        app.logger.info(f'[Product Reject] URL: {product_url[:50]}...')
+        app.logger.info(f'[Product Reject] Title: {product_title[:50]}...')
+        app.logger.info(f'[Product Reject] Keyword: {keyword}')
+        
+        log_activity('sourcing', f'Product rejected: {product_title[:30]}...', 'info')
+        
+        return jsonify({
+            'success': True,
+            'message': 'Product marked as rejected'
+        })
+        
+    except Exception as e:
+        app.logger.error(f'[Product Reject] Error: {str(e)}')
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/sourcing/test-scraping', methods=['POST'])
 @login_required

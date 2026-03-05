@@ -95,6 +95,9 @@
                             <button onclick="approveProduct({{ product.id }})" class="text-green-600 hover:text-green-900 mr-3">
                                 ✅ 승인
                             </button>
+                            <button onclick="rejectProduct({{ product.id }}, '{{ product.original_url }}', '{{ product.title_kr or product.title_cn }}', '{{ product.keywords or '' }}')" class="text-orange-600 hover:text-orange-900 mr-3">
+                                ❌ 거절
+                            </button>
                             {% elif product.status == 'approved' %}
                             <button onclick="registerToMarketplace({{ product.id }})" class="text-purple-600 hover:text-purple-900 mr-3">
                                 🚀 마켓 등록
@@ -241,6 +244,49 @@
                 }
             } catch (error) {
                 alert('오류: ' + error.message);
+            }
+        }
+        
+        async function rejectProduct(productId, productUrl, productTitle, keyword) {
+            if (!confirm('❌ 이 상품을 거절하시겠습니까?\n\n거절된 상품은 다음 검색 시 자동으로 제외됩니다.')) {
+                return;
+            }
+            
+            try {
+                // Mark as rejected
+                const rejectResponse = await fetch('/api/product/reject', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        product_url: productUrl,
+                        product_title: productTitle,
+                        keyword: keyword
+                    })
+                });
+                
+                const rejectResult = await rejectResponse.json();
+                
+                if (!rejectResult.success) {
+                    alert('⚠️ 거절 기록 실패: ' + (rejectResult.error || '알 수 없는 오류'));
+                    return;
+                }
+                
+                // Delete from database
+                const deleteResponse = await fetch(`/api/products/${productId}`, {
+                    method: 'DELETE',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                
+                const deleteResult = await deleteResponse.json();
+                
+                if (deleteResult.success) {
+                    alert('✅ 상품이 거절되었습니다!\n다음 검색 시 이 상품은 제외됩니다.');
+                    location.reload();
+                } else {
+                    alert('⚠️ 상품 삭제 실패: ' + (deleteResult.error || '알 수 없는 오류'));
+                }
+            } catch (error) {
+                alert('❌ 오류: ' + error.message);
             }
         }
         
