@@ -1834,7 +1834,7 @@ def search_integrated_hybrid(keyword, max_results=50):
     search_keyword = keyword
     if any('\uac00' <= c <= '\ud7a3' for c in keyword):  # 한글 감지
         app.logger.info(f'[Search Engine] 🔤 Detected Korean keyword, translating...')
-        from product_matcher import translate_keyword_to_english
+        from aliexpress_matcher import translate_keyword_to_english  # 🔧 FIX: Import from correct module
         try:
             search_keyword = translate_keyword_to_english(keyword)
             app.logger.info(f'[Search Engine] ✅ Translation: "{keyword}" → "{search_keyword}"')
