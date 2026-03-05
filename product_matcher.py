@@ -215,13 +215,20 @@ Korean:"""
     
     # 복합어 먼저 찾기 (예: "hair dryer" > "hair", "dryer")
     for eng, kor in sorted(translation_map.items(), key=lambda x: -len(x[0])):
-        if eng in text_lower:
+        # 🚨 FIX: 단어 경계 확인 (부분 문자열 매칭 방지)
+        # "cat"이 "cathode"에 매칭되는 것 방지
+        import re
+        # \b는 단어 경계 (word boundary)
+        pattern = r'\b' + re.escape(eng) + r'\b'
+        match = re.search(pattern, text_lower)
+        
+        if match:
+            pos = match.start()
             # 이미 매칭된 부분이 아닌지 확인
-            pos = text_lower.find(eng)
-            if not any(start <= pos < end or start < pos + len(eng) <= end 
+            if not any(start <= pos < match.end() or start < match.end() <= end 
                       for start, end in matched_positions):
                 korean_words.append(kor)
-                matched_positions.append((pos, pos + len(eng)))
+                matched_positions.append((pos, match.end()))
     
     # 🔧 키워드가 없으면 AI 재시도 (Gemini만, 빠르게)
     if not korean_words:
