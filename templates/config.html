@@ -178,14 +178,32 @@
                     -->
                     
                     <div>
-                        <label class="block text-gray-700 text-sm font-bold mb-2">OpenAI API Key</label>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">🤖 Google Gemini API Key (무료 추천)</label>
+                        <input 
+                            type="password" 
+                            id="gemini_api_key" 
+                            value="{{ configs.get('gemini_api_key', '') }}"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            placeholder="AI 키워드 추출용 (하루 1,500회 무료)"
+                        >
+                        <p class="text-xs text-gray-500 mt-1">
+                            💡 <a href="https://aistudio.google.com/apikey" target="_blank" class="text-blue-600 hover:underline">무료 발급 →</a> 
+                            | 시장분석 키워드 추출에 우선 사용됩니다 (무료)
+                        </p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">OpenAI API Key (폴백용)</label>
                         <input 
                             type="password" 
                             id="openai_api_key" 
                             value="{{ configs.get('openai_api_key', '') }}"
                             class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="GPT-4 콘텐츠 생성용"
+                            placeholder="GPT-4 콘텐츠 생성 및 Gemini 폴백용"
                         >
+                        <p class="text-xs text-gray-500 mt-1">
+                            💡 Gemini 실패 시 자동으로 OpenAI를 사용합니다 (유료)
+                        </p>
                     </div>
                     
                     <div class="border-t pt-4 mt-4">
@@ -291,6 +309,7 @@
                 coupang_fee_rate: document.getElementById('coupang_fee_rate').value,
                 rejection_expiry_days: document.getElementById('rejection_expiry_days').value,
                 // scrapingant_api_key: document.getElementById('scrapingant_api_key').value, // REMOVED: AliExpress API migration
+                gemini_api_key: document.getElementById('gemini_api_key').value,
                 openai_api_key: document.getElementById('openai_api_key').value,
                 naver_client_id: document.getElementById('naver_client_id').value,
                 naver_client_secret: document.getElementById('naver_client_secret').value,

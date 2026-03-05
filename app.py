@@ -1018,7 +1018,7 @@ def parse_smart_price(price_text):
 
 def extract_keyword_rule_based(title):
     """
-    규칙 기반 키워드 추출 (OpenAI 폴백용)
+    규칙 기반 키워드 추출 (AI 폴백용)
     
     Rules:
     1. 카테고리 매칭 (jewelry → 목걸이, boots → 부츠 등)
@@ -1069,6 +1069,74 @@ def extract_keyword_rule_based(title):
     fallback = ' '.join(words)
     app.logger.info(f'[Rule-based] No category match, using first 3 words: {fallback}')
     return fallback
+
+def extract_keyword_hybrid_ai(title):
+    """
+    하이브리드 AI 키워드 추출
+    
+    우선순위:
+    1. Google Gemini (무료, 하루 1,500회)
+    2. OpenAI GPT-4o-mini (유료, 안정적)
+    3. 규칙 기반 폴백
+    
+    Returns:
+        str: 추출된 한국어 키워드
+    """
+    prompt = f"""다음 상품명을 보고 네이버/쿠팡에서 검색할 수 있는 한국어 키워드 2-3개를 추출해주세요.
+브랜드명은 제외하고, 제품 카테고리나 일반명사만 사용해주세요.
+
+상품명: {title}
+
+응답 형식: 키워드1, 키워드2 (예: 무선 이어폰, 블루투스 헤드셋)
+한국어 키워드만 작성하세요."""
+    
+    # 1️⃣ Try Gemini first (무료)
+    gemini_api_key = get_config('gemini_api_key')
+    if gemini_api_key:
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=gemini_api_key)
+            model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            
+            response = model.generate_content(prompt)
+            extracted = response.text.strip()
+            keyword = extracted.split(',')[0].strip()
+            
+            app.logger.info(f'[Hybrid AI] ✅ Gemini extracted keyword: {keyword}')
+            return keyword
+            
+        except Exception as e:
+            app.logger.warning(f'[Hybrid AI] ⚠️ Gemini failed: {str(e)[:100]}')
+    
+    # 2️⃣ Fallback to OpenAI (유료)
+    openai_api_key = get_config('openai_api_key')
+    if openai_api_key:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key=openai_api_key)
+            
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are a Korean e-commerce keyword extraction expert."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=50,
+                temperature=0.3
+            )
+            
+            extracted = response.choices[0].message.content.strip()
+            keyword = extracted.split(',')[0].strip()
+            
+            app.logger.info(f'[Hybrid AI] ✅ OpenAI extracted keyword: {keyword}')
+            return keyword
+            
+        except Exception as e:
+            app.logger.warning(f'[Hybrid AI] ⚠️ OpenAI failed: {str(e)[:100]}')
+    
+    # 3️⃣ Final fallback: 규칙 기반
+    app.logger.warning(f'[Hybrid AI] ⚠️ All AI methods failed, using rule-based extraction')
+    return extract_keyword_rule_based(title)
 
 # ============================================================================
 # ALIEXPRESS OFFICIAL API INTEGRATION
@@ -4557,51 +4625,12 @@ def analyze_product_market(product_id):
             keyword = ' '.join(words[:3])
         app.logger.info(f'[Market Analysis] Using Korean title (truncated): {keyword}')
     
-    # 3. AI로 일반 키워드 추출 (영어/중국어 제품명 → 한국어 카테고리명)
+    # 3. AI로 일반 키워드 추출 (하이브리드: Gemini → OpenAI → 규칙 기반)
     else:
         title_original = product['title_cn'] or ''
         app.logger.info(f'[Market Analysis] Attempting AI keyword extraction from: {title_original[:80]}...')
         
-        # OpenAI로 키워드 추출
-        openai_api_key = get_config('openai_api_key')
-        if openai_api_key:
-            try:
-                from openai import OpenAI
-                client = OpenAI(api_key=openai_api_key)
-                
-                prompt = f"""다음 상품명을 보고 네이버/쿠팡에서 검색할 수 있는 한국어 키워드 2-3개를 추출해주세요.
-브랜드명은 제외하고, 제품 카테고리나 일반명사만 사용해주세요.
-
-상품명: {title_original}
-
-응답 형식: 키워드1, 키워드2 (예: 무선 이어폰, 블루투스 헤드셋)
-한국어 키워드만 작성하세요."""
-
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": "You are a Korean e-commerce keyword extraction expert. Extract general product category keywords in Korean."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=50,
-                    temperature=0.3
-                )
-                
-                extracted = response.choices[0].message.content.strip()
-                # 첫 번째 키워드만 사용
-                keyword = extracted.split(',')[0].strip()
-                
-                app.logger.info(f'[Market Analysis] ✅ AI extracted keyword: {keyword}')
-                
-            except Exception as e:
-                app.logger.warning(f'[Market Analysis] ⚠️ AI extraction failed: {str(e)}')
-                # AI 실패 시 규칙 기반 폴백
-                keyword = extract_keyword_rule_based(title_original)
-                app.logger.info(f'[Market Analysis] Using rule-based fallback: {keyword}')
-        else:
-            # OpenAI 키가 없으면 규칙 기반 추출
-            keyword = extract_keyword_rule_based(title_original)
-            app.logger.warning(f'[Market Analysis] ⚠️ No OpenAI key, using rule-based extraction: {keyword}')
+        keyword = extract_keyword_hybrid_ai(title_original)
     
     if not keyword:
         conn.close()
