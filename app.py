@@ -2513,6 +2513,168 @@ def start_sourcing():
     
     return jsonify(response_data)
 
+@app.route('/api/sourcing/ai-analyze', methods=['POST'])
+@login_required
+def ai_analyze_sourcing():
+    """
+    🤖 AI-POWERED SOURCING ENDPOINT
+    
+    Performs comprehensive AI analysis on sourced products:
+    - Collects Coupang market data (sales, reviews, ratings)
+    - Analyzes Naver Shopping trends (price, competition)
+    - Uses OpenAI GPT-4 for intelligent recommendations
+    - Generates detailed analysis reports
+    
+    Request JSON:
+    {
+        "keyword": "검색 키워드" (optional),
+        "product_ids": [1, 2, 3] (optional - if not provided, analyzes latest products)
+    }
+    
+    Response:
+    {
+        "success": true,
+        "ai_enabled": true,
+        "total_analyzed": 3,
+        "reports": [
+            {
+                "product_title": "...",
+                "korean_keyword": "...",
+                "overall_score": 85,
+                "recommendation": "BUY",
+                "profit_margin": 35.5,
+                "estimated_monthly_sales": 120,
+                "success_probability": 78,
+                "markdown_report": "# Full Markdown Report...",
+                "full_analysis": { ... }
+            }
+        ]
+    }
+    """
+    
+    data = request.json or {}
+    keyword = data.get('keyword', '')
+    product_ids = data.get('product_ids', [])
+    
+    app.logger.info(f'[AI Sourcing] ========================================')
+    app.logger.info(f'[AI Sourcing] 🤖 AI Analysis Request from {current_user.username}')
+    app.logger.info(f'[AI Sourcing] Keyword: {keyword}')
+    app.logger.info(f'[AI Sourcing] Product IDs: {product_ids}')
+    app.logger.info(f'[AI Sourcing] ========================================')
+    
+    log_activity('ai_sourcing', '🤖 Starting AI market analysis', 'in_progress')
+    
+    # Get products to analyze
+    conn = get_db()
+    cursor = conn.cursor()
+    
+    if product_ids:
+        # Analyze specific products
+        placeholders = ','.join(['?'] * len(product_ids))
+        cursor.execute(f'''
+            SELECT id, original_url, title_cn, price_cny, price_krw, 
+                   profit_margin, estimated_profit, images_json, keywords
+            FROM sourced_products 
+            WHERE id IN ({placeholders})
+            ORDER BY id DESC
+        ''', product_ids)
+    else:
+        # Analyze latest 3 products
+        cursor.execute('''
+            SELECT id, original_url, title_cn, price_cny, price_krw, 
+                   profit_margin, estimated_profit, images_json, keywords
+            FROM sourced_products 
+            ORDER BY id DESC 
+            LIMIT 3
+        ''')
+    
+    db_products = cursor.fetchall()
+    conn.close()
+    
+    if not db_products:
+        return jsonify({
+            'success': False,
+            'error': 'No products found to analyze'
+        }), 404
+    
+    app.logger.info(f'[AI Sourcing] Found {len(db_products)} products to analyze')
+    
+    # Convert to format expected by AI sourcer
+    products_for_ai = []
+    for row in db_products:
+        try:
+            images = json.loads(row['images_json']) if row['images_json'] else []
+            image_url = images[0] if images else ''
+        except:
+            image_url = ''
+        
+        products_for_ai.append({
+            'db_id': row['id'],
+            'title': row['title_cn'],
+            'url': row['original_url'],
+            'price': row['price_cny'],
+            'price_krw': row['price_krw'],
+            'image': image_url,
+            'category': row['keywords'] or 'Unknown'
+        })
+    
+    # Import AI sourcing integration module
+    try:
+        from integrate_ai_sourcing import execute_smart_sourcing_with_ai, save_ai_analysis_to_db
+        
+        # Run AI analysis
+        ai_result = execute_smart_sourcing_with_ai(
+            keyword=keyword or 'general',
+            aliexpress_products=products_for_ai,
+            get_config_func=get_config,
+            get_db_func=get_db,
+            log_activity_func=log_activity,
+            app_logger=app.logger
+        )
+        
+        if not ai_result.get('ai_enabled', False):
+            return jsonify({
+                'success': False,
+                'error': 'AI sourcing not available',
+                'reason': ai_result.get('reason', 'Unknown')
+            }), 400
+        
+        if not ai_result.get('success', False):
+            return jsonify({
+                'success': False,
+                'error': ai_result.get('error', 'AI analysis failed')
+            }), 500
+        
+        # Save AI analyses to database
+        for report in ai_result.get('reports', []):
+            try:
+                save_ai_analysis_to_db(
+                    report['full_analysis'],
+                    get_db,
+                    app.logger
+                )
+            except Exception as e:
+                app.logger.error(f'[AI Sourcing] ⚠️ Failed to save AI analysis: {str(e)}')
+        
+        log_activity('ai_sourcing', f'✅ AI analysis complete: {len(ai_result.get("reports", []))} reports generated', 'success')
+        
+        app.logger.info(f'[AI Sourcing] ========================================')
+        app.logger.info(f'[AI Sourcing] ✅ AI Analysis Complete')
+        app.logger.info(f'[AI Sourcing] Total Reports: {len(ai_result.get("reports", []))}')
+        app.logger.info(f'[AI Sourcing] ========================================')
+        
+        return jsonify(ai_result)
+    
+    except Exception as e:
+        app.logger.error(f'[AI Sourcing] ❌ Critical error: {str(e)}')
+        app.logger.exception(e)
+        log_activity('ai_sourcing', f'❌ AI analysis error: {str(e)}', 'error')
+        
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
 @app.route('/api/product/reject', methods=['POST'])
 @login_required
 def reject_product():
