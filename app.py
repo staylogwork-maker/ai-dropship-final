@@ -1020,28 +1020,82 @@ def extract_keyword_rule_based(title):
     """
     규칙 기반 키워드 추출 (AI 폴백용)
     
+    우선순위가 높은 키워드부터 매칭합니다.
+    더 구체적인 매칭이 일반 매칭보다 우선됩니다.
+    
     Rules:
-    1. 카테고리 매칭 (jewelry → 목걸이, boots → 부츠 등)
-    2. 첫 2-3 단어만 사용
-    3. 브랜드명 제거
+    1. 우선순위 카테고리 매칭 (구체적)
+    2. 일반 카테고리 매칭 (넓은 범위)
+    3. 첫 3단어 폴백
     """
     title_lower = title.lower()
     
-    # 카테고리 매핑 (영어 → 한국어)
-    category_map = {
+    # 🔥 우선순위 기반 카테고리 매핑
+    # 더 구체적인 키워드가 먼저 매칭되도록 순서 중요!
+    
+    # 1️⃣ 전자제품 & 전문 장비 (구체적)
+    priority_map = {
+        # 전문 장비 (전자/물리/화학)
+        'oscilloscope': '오실로스코프',
+        'cathode ray tube': '측정 장비',  # 더 구체적 매핑
+        'experiment equipment': '실험 장비',
+        'physics teaching': '교육 장비',
+        'mechanical effect': '기계 장치',
+        'multimeter': '멀티미터',
+        'power supply': '전원 공급기',
+        
+        # 전자부품
+        'resistor': '저항',
+        'capacitor': '커패시터',
+        'transistor': '트랜지스터',
+        'ic chip': '반도체',
+        'circuit board': '회로 기판',
+        
+        # 청소/세차 장비
+        'pressure washer': '고압 세척기',
+        'car wash': '세차 용품',
+        'water gun': '물총',
+        'foam generator': '세차 거품기',
+        'sewer drain': '하수구 청소',
+        'drain cleaning': '배수관 청소',
+        
+        # 패션 (구체적)
+        'snake pattern': '애니멀 패턴',
+        'high heel': '하이힐',
+        'winter boots': '겨울 부츠',
+        'fashion boots': '패션 부츠',
+        'custom jewelry': '맞춤 주얼리',
+        'personalized necklace': '맞춤 목걸이',
+    }
+    
+    # 2️⃣ 일반 카테고리 (넓은 범위)
+    general_map = {
+        # 주얼리
         'jewelry': '주얼리',
         'necklace': '목걸이',
-        'bracelet': '팔찌',
         'ring': '반지',
+        'bracelet': '팔찌',
         'earring': '귀걸이',
+        'pendant': '펜던트',
+        
+        # 신발
         'boots': '부츠',
         'shoes': '신발',
+        'sneakers': '운동화',
+        'sandals': '샌들',
+        
+        # 의류
         'dress': '원피스',
         'shirt': '셔츠',
         'pants': '바지',
+        'jacket': '자켓',
+        
+        # 가방/액세서리
         'bag': '가방',
         'wallet': '지갑',
         'watch': '시계',
+        
+        # 전자기기
         'phone case': '폰케이스',
         'charger': '충전기',
         'cable': '케이블',
@@ -1050,24 +1104,32 @@ def extract_keyword_rule_based(title):
         'speaker': '스피커',
         'keyboard': '키보드',
         'mouse': '마우스',
+        'mousepad': '마우스패드',
+        
+        # 생활용품
         'hose': '호스',
+        'pipe': '파이프',
         'cleaner': '청소기',
         'washer': '세척기',
-        'tube': '튜브',
-        'experiment': '실험 장비',
-        'tool': '공구'
+        'tool': '공구',
+        'plumbing': '배관 용품',
     }
     
-    # 카테고리 매칭 시도
-    for eng, kor in category_map.items():
+    # 우선순위 매칭 (구체적 → 일반)
+    for eng, kor in priority_map.items():
         if eng in title_lower:
-            app.logger.info(f'[Rule-based] Matched category: {eng} → {kor}')
+            app.logger.info(f'[Rule-based Priority] Matched: {eng} → {kor}')
+            return kor
+    
+    for eng, kor in general_map.items():
+        if eng in title_lower:
+            app.logger.info(f'[Rule-based General] Matched: {eng} → {kor}')
             return kor
     
     # 매칭 실패 시 첫 3단어만 사용
     words = title.split()[:3]
     fallback = ' '.join(words)
-    app.logger.info(f'[Rule-based] No category match, using first 3 words: {fallback}')
+    app.logger.info(f'[Rule-based Fallback] No match, using first 3 words: {fallback}')
     return fallback
 
 def extract_keyword_hybrid_ai(title):
@@ -1082,13 +1144,25 @@ def extract_keyword_hybrid_ai(title):
     Returns:
         str: 추출된 한국어 키워드
     """
-    prompt = f"""다음 상품명을 보고 네이버/쿠팡에서 검색할 수 있는 한국어 키워드 2-3개를 추출해주세요.
-브랜드명은 제외하고, 제품 카테고리나 일반명사만 사용해주세요.
+    # 🎯 개선된 프롬프트: 제품의 실제 용도와 카테고리를 파악
+    prompt = f"""다음 상품명을 분석하여 네이버/쿠팡에서 검색할 수 있는 한국어 키워드를 추출해주세요.
 
 상품명: {title}
 
-응답 형식: 키워드1, 키워드2 (예: 무선 이어폰, 블루투스 헤드셋)
-한국어 키워드만 작성하세요."""
+📋 규칙:
+1. 이 제품이 **무엇에 사용되는지** 파악하세요
+2. 브랜드명, 모델명, 특수 코드는 제외하세요
+3. 일반 소비자가 검색할 만한 **카테고리 키워드**만 사용하세요
+4. 너무 구체적이면 검색 결과가 없을 수 있습니다
+
+예시:
+- "ATTAGENS Custom Jewelry" → "맞춤 목걸이" (브랜드 제외, 용도 중심)
+- "Cathode Ray Tube Experiment" → "오실로스코프" 또는 "측정 장비" (실제 용도)
+- "5800psi Pressure Washer" → "고압 세척기" 또는 "세차 용품" (숫자 제외)
+- "R5F104GJGFB IC Chip" → "반도체" 또는 "전자부품" (모델명 제외)
+
+응답 형식: 키워드1, 키워드2
+한국어만 작성하세요."""
     
     # 1️⃣ Try Gemini first (무료)
     gemini_api_key = get_config('gemini_api_key')
@@ -4650,23 +4724,37 @@ def analyze_product_market(product_id):
     if result.get('success') and result.get('analyzed_products', 0) < 10:
         app.logger.warning(f'[Market Analysis] ⚠️ Low results ({result["analyzed_products"]} products). Trying broader keyword...')
         
-        # AI로 더 일반적인 키워드 추출 시도
-        openai_api_key = get_config('openai_api_key')
-        if openai_api_key:
-            try:
-                import openai
-                openai.api_key = openai_api_key
-                
-                prompt = f"""이 키워드의 검색 결과가 너무 적습니다: "{keyword}"
+        # 🔄 하이브리드 AI로 더 넓은 키워드 추출 (Gemini → OpenAI)
+        broader_keyword = None
+        
+        prompt = f"""이 키워드의 검색 결과가 너무 적습니다: "{keyword}"
 더 일반적이고 포괄적인 한국어 키워드 1개만 제안해주세요.
 
 예시:
+- "측정 장비" → "전자부품"
 - "맞춤 주얼리" → "목걸이"
 - "스네이크 패턴 부츠" → "여성 부츠"
-- "오실로스코프" → "측정 장비"
+- "오실로스코프" → "전자 장비"
 
 응답: (키워드 1개만)"""
-
+        
+        # 1️⃣ Try Gemini first
+        gemini_api_key = get_config('gemini_api_key')
+        if gemini_api_key and not broader_keyword:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=gemini_api_key)
+                model = genai.GenerativeModel('gemini-2.0-flash-exp')
+                response = model.generate_content(prompt)
+                broader_keyword = response.text.strip()
+                app.logger.info(f'[Market Analysis] 🔄 Gemini suggested broader keyword: {broader_keyword}')
+            except Exception as e:
+                app.logger.warning(f'[Market Analysis] Gemini retry failed: {str(e)[:50]}')
+        
+        # 2️⃣ Fallback to OpenAI
+        openai_api_key = get_config('openai_api_key')
+        if openai_api_key and not broader_keyword:
+            try:
                 from openai import OpenAI
                 client = OpenAI(api_key=openai_api_key)
                 
@@ -4681,20 +4769,22 @@ def analyze_product_market(product_id):
                 )
                 
                 broader_keyword = response.choices[0].message.content.strip()
-                app.logger.info(f'[Market Analysis] 🔄 Retrying with broader keyword: {broader_keyword}')
-                
-                # 재시도
-                retry_result = analyze_naver_market(broader_keyword, naver_client_id, naver_client_secret)
-                
-                if retry_result.get('success') and retry_result.get('analyzed_products', 0) >= 10:
-                    app.logger.info(f'[Market Analysis] ✅ Retry successful: {retry_result["analyzed_products"]} products')
-                    result = retry_result
-                    keyword = broader_keyword  # 성공한 키워드로 업데이트
-                else:
-                    app.logger.info(f'[Market Analysis] Keeping original result')
-                    
+                app.logger.info(f'[Market Analysis] 🔄 OpenAI suggested broader keyword: {broader_keyword}')
             except Exception as e:
-                app.logger.warning(f'[Market Analysis] Retry failed: {str(e)}')
+                app.logger.warning(f'[Market Analysis] OpenAI retry failed: {str(e)[:50]}')
+        
+        # 재시도 실행
+        if broader_keyword and broader_keyword != keyword:
+            retry_result = analyze_naver_market(broader_keyword, naver_client_id, naver_client_secret)
+            
+            if retry_result.get('success') and retry_result.get('analyzed_products', 0) >= 10:
+                app.logger.info(f'[Market Analysis] ✅ Retry successful: {retry_result["analyzed_products"]} products')
+                result = retry_result
+                keyword = broader_keyword  # 성공한 키워드로 업데이트
+            else:
+                app.logger.info(f'[Market Analysis] Retry still low results, keeping original')
+        else:
+            app.logger.info(f'[Market Analysis] No broader keyword available, keeping original')
     
     if not result.get('success'):
         conn.close()
