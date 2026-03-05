@@ -25,6 +25,127 @@ def get_config(key: str, default=None):
         return default
 
 
+def translate_keyword_to_english(korean_keyword: str) -> str:
+    """
+    한글 키워드 → 영문 키워드 변환 (Gemini → OpenAI → 규칙 기반 순)
+    
+    Args:
+        korean_keyword: 한글 키워드 (예: "차량용 USB 공기청정기")
+    
+    Returns:
+        영문 키워드 (예: "car usb air purifier")
+    """
+    import google.generativeai as genai
+    import openai
+    
+    # 1단계: Gemini API 시도 (무료, 1,500 calls/day)
+    gemini_key = get_config('gemini_api_key')
+    if gemini_key:
+        try:
+            genai.configure(api_key=gemini_key)
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            
+            prompt = f"""Translate this Korean e-commerce keyword to English for AliExpress search.
+Output ONLY the English keyword, nothing else.
+
+Rules:
+1. Use simple, searchable product category terms
+2. Remove brand names, model numbers
+3. Focus on what the product IS or DOES
+4. Keep it short (2-5 words)
+
+Korean: {korean_keyword}
+English:"""
+            
+            response = model.generate_content(prompt)
+            english = response.text.strip().lower()
+            
+            logger.info(f"[Translation-Gemini] ✅ {korean_keyword} → {english}")
+            return english
+            
+        except Exception as e:
+            logger.warning(f"[Translation-Gemini] ❌ Failed: {e}")
+    
+    # 2단계: OpenAI GPT-4o-mini 시도 (유료)
+    openai_key = get_config('openai_api_key')
+    if openai_key:
+        try:
+            openai.api_key = openai_key
+            
+            response = openai.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{
+                    "role": "user",
+                    "content": f"""Translate this Korean e-commerce keyword to English for AliExpress search.
+Output ONLY the English keyword, nothing else.
+
+Korean: {korean_keyword}
+English:"""
+                }],
+                max_tokens=20,
+                temperature=0.3
+            )
+            
+            english = response.choices[0].message.content.strip().lower()
+            logger.info(f"[Translation-OpenAI] ✅ {korean_keyword} → {english}")
+            return english
+            
+        except Exception as e:
+            logger.warning(f"[Translation-OpenAI] ❌ Failed: {e}")
+    
+    # 3단계: 규칙 기반 매핑 (100% 폴백)
+    translation_map = {
+        '차량용': 'car',
+        '자동차': 'car',
+        '공기청정기': 'air purifier',
+        '반려동물': 'pet',
+        '급식기': 'feeder',
+        '자동': 'automatic',
+        '무선': 'wireless',
+        '이어폰': 'earphone',
+        '블루투스': 'bluetooth',
+        '스피커': 'speaker',
+        '보조배터리': 'power bank',
+        '충전기': 'charger',
+        '휴대폰': 'phone',
+        '거치대': 'holder',
+        '케이블': 'cable',
+        '키보드': 'keyboard',
+        '마우스': 'mouse',
+        '게이밍': 'gaming',
+        '기계식': 'mechanical',
+        '주얼리': 'jewelry',
+        '목걸이': 'necklace',
+        '반지': 'ring',
+        '귀걸이': 'earring',
+        '팔찌': 'bracelet',
+        '세척기': 'washer',
+        '고압': 'high pressure',
+        '청소': 'cleaning',
+        '측정': 'measurement',
+        '반도체': 'semiconductor',
+        'IC칩': 'ic chip',
+    }
+    
+    words = korean_keyword.split()
+    english_words = []
+    
+    for word in words:
+        # 직접 매칭
+        if word in translation_map:
+            english_words.append(translation_map[word])
+        else:
+            # 부분 매칭
+            for ko, en in translation_map.items():
+                if ko in word:
+                    english_words.append(en)
+                    break
+    
+    english = ' '.join(english_words) if english_words else korean_keyword
+    logger.info(f"[Translation-RuleBased] ⚠️ {korean_keyword} → {english}")
+    return english
+
+
 def search_aliexpress_official(keyword: str, max_results: int = 50) -> List[Dict]:
     """
     AliExpress Official Affiliate API 검색
