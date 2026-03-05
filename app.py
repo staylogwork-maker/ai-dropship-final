@@ -4486,7 +4486,7 @@ def analyze_product_market(product_id):
             'error': '네이버 API 인증 정보가 설정되지 않았습니다. 설정 페이지에서 Client ID와 Secret을 입력해주세요.'
         }), 400
     
-    # 키워드 추출 (우선순위: keywords > title_kr > title_cn의 첫 2-3 단어)
+    # 키워드 추출 (우선순위: keywords > title_kr > AI 추출 > title_cn 축약)
     keyword = None
     
     # 1. keywords 필드가 있으면 우선 사용
@@ -4503,11 +4503,51 @@ def analyze_product_market(product_id):
             keyword = ' '.join(words[:3])
         app.logger.info(f'[Market Analysis] Using Korean title (truncated): {keyword}')
     
-    # 3. title_cn만 있으면 첫 50자 사용
+    # 3. AI로 일반 키워드 추출 (영어/중국어 제품명 → 한국어 카테고리명)
     else:
-        title_cn = product['title_cn'] or ''
-        keyword = title_cn[:50] if len(title_cn) > 50 else title_cn
-        app.logger.warning(f'[Market Analysis] ⚠️ Using Chinese/English title: {keyword}')
+        title_original = product['title_cn'] or ''
+        app.logger.info(f'[Market Analysis] Attempting AI keyword extraction from: {title_original[:80]}...')
+        
+        # OpenAI로 키워드 추출
+        openai_api_key = get_config('openai_api_key')
+        if openai_api_key:
+            try:
+                import openai
+                openai.api_key = openai_api_key
+                
+                prompt = f"""다음 상품명을 보고 네이버/쿠팡에서 검색할 수 있는 한국어 키워드 2-3개를 추출해주세요.
+브랜드명은 제외하고, 제품 카테고리나 일반명사만 사용해주세요.
+
+상품명: {title_original}
+
+응답 형식: 키워드1, 키워드2 (예: 무선 이어폰, 블루투스 헤드셋)
+한국어 키워드만 작성하세요."""
+
+                response = openai.ChatCompletion.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "You are a Korean e-commerce keyword extraction expert. Extract general product category keywords in Korean."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=50,
+                    temperature=0.3
+                )
+                
+                extracted = response.choices[0].message.content.strip()
+                # 첫 번째 키워드만 사용
+                keyword = extracted.split(',')[0].strip()
+                
+                app.logger.info(f'[Market Analysis] ✅ AI extracted keyword: {keyword}')
+                
+            except Exception as e:
+                app.logger.warning(f'[Market Analysis] ⚠️ AI extraction failed: {str(e)}')
+                # AI 실패 시 폴백
+                keyword = title_original[:50] if len(title_original) > 50 else title_original
+                app.logger.info(f'[Market Analysis] Using fallback (truncated original): {keyword}')
+        else:
+            # OpenAI 키가 없으면 원본 제목 사용
+            keyword = title_original[:50] if len(title_original) > 50 else title_original
+            app.logger.warning(f'[Market Analysis] ⚠️ No OpenAI key, using original title: {keyword}')
     
     if not keyword:
         conn.close()
@@ -4516,12 +4556,59 @@ def analyze_product_market(product_id):
             'error': '상품 키워드를 추출할 수 없습니다.'
         }), 400
     
-    # 시장 분석 실행
+    # 시장 분석 실행 (재시도 로직 포함)
     from market_analysis import analyze_naver_market
     
     app.logger.info(f'[Market Analysis] Analyzing product {product_id} with keyword: {keyword}')
     
     result = analyze_naver_market(keyword, naver_client_id, naver_client_secret)
+    
+    # 결과가 너무 적으면 더 일반적인 키워드로 재시도
+    if result.get('success') and result.get('analyzed_products', 0) < 10:
+        app.logger.warning(f'[Market Analysis] ⚠️ Low results ({result["analyzed_products"]} products). Trying broader keyword...')
+        
+        # AI로 더 일반적인 키워드 추출 시도
+        openai_api_key = get_config('openai_api_key')
+        if openai_api_key:
+            try:
+                import openai
+                openai.api_key = openai_api_key
+                
+                prompt = f"""이 키워드의 검색 결과가 너무 적습니다: "{keyword}"
+더 일반적이고 포괄적인 한국어 키워드 1개만 제안해주세요.
+
+예시:
+- "맞춤 주얼리" → "목걸이"
+- "스네이크 패턴 부츠" → "여성 부츠"
+- "오실로스코프" → "측정 장비"
+
+응답: (키워드 1개만)"""
+
+                response = openai.ChatCompletion.create(
+                    model="gpt-4o-mini",
+                    messages=[
+                        {"role": "system", "content": "Suggest a broader, more general Korean keyword."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    max_tokens=20,
+                    temperature=0.3
+                )
+                
+                broader_keyword = response.choices[0].message.content.strip()
+                app.logger.info(f'[Market Analysis] 🔄 Retrying with broader keyword: {broader_keyword}')
+                
+                # 재시도
+                retry_result = analyze_naver_market(broader_keyword, naver_client_id, naver_client_secret)
+                
+                if retry_result.get('success') and retry_result.get('analyzed_products', 0) >= 10:
+                    app.logger.info(f'[Market Analysis] ✅ Retry successful: {retry_result["analyzed_products"]} products')
+                    result = retry_result
+                    keyword = broader_keyword  # 성공한 키워드로 업데이트
+                else:
+                    app.logger.info(f'[Market Analysis] Keeping original result')
+                    
+            except Exception as e:
+                app.logger.warning(f'[Market Analysis] Retry failed: {str(e)}')
     
     if not result.get('success'):
         conn.close()
