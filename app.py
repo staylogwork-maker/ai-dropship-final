@@ -1765,7 +1765,8 @@ def execute_smart_sourcing(keyword):
     # ========================================================================
     # Load configs from DB (NEVER use global variables)
     # ========================================================================
-    scrapingant_key = get_config('scrapingant_api_key', '')
+    aliexpress_app_key = get_config('aliexpress_app_key', '')
+    aliexpress_app_secret = get_config('aliexpress_app_secret', '')
     openai_key = get_config('openai_api_key', '')
     target_margin_rate = get_config('target_margin_rate', 30)
     cny_exchange_rate = get_config('cny_exchange_rate', 190)
@@ -1775,27 +1776,28 @@ def execute_smart_sourcing(keyword):
     debug_mode_enabled = debug_mode.lower() in ['true', '1', 'yes', 'on']
     
     app.logger.info('[Smart Sniper] 📋 Config loaded from DB:')
-    app.logger.info(f'  - ScrapingAnt key: {scrapingant_key[:4]}**** (len: {len(scrapingant_key)})')
+    app.logger.info(f'  - AliExpress App Key: {aliexpress_app_key}')
+    app.logger.info(f'  - AliExpress Secret: {aliexpress_app_secret[:10]}**** (len: {len(aliexpress_app_secret)})')
     app.logger.info(f'  - OpenAI key: {openai_key[:4]}**** (len: {len(openai_key)})')
     app.logger.info(f'  - Target margin: {target_margin_rate}%')
     app.logger.info(f'  - CNY rate: {cny_exchange_rate}')
     app.logger.info(f'  - 🐛 DEBUG MODE (Ignore Filters): {debug_mode_enabled}')
     
-    if not scrapingant_key:
-        app.logger.error('[Smart Sniper] ❌ CRITICAL: ScrapingAnt API key is EMPTY')
-        app.logger.error('[Smart Sniper] Please configure API key in Settings page')
-        log_activity('sourcing', '❌ ScrapingAnt API key not configured', 'error')
+    if not aliexpress_app_key or not aliexpress_app_secret:
+        app.logger.error('[Smart Sniper] ❌ CRITICAL: AliExpress API credentials missing')
+        app.logger.error('[Smart Sniper] Please configure App Key & Secret in database')
+        log_activity('sourcing', '❌ AliExpress API not configured', 'error')
         return {
             'success': False,
-            'error': 'ScrapingAnt API key not configured. Please set it in Settings.',
+            'error': 'AliExpress API credentials not configured. Contact system administrator.',
             'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0},
             'stage_stats': stage_stats
         }
     
-    # Step 1: 🚀 HYBRID Search (Alibaba + AliExpress) - REAL DATA ONLY
-    log_activity('sourcing', f'Step 1/5: 🚀 HYBRID Search (Alibaba + AliExpress) for "{keyword}"', 'in_progress')
+    # Step 1: 🚀 AliExpress Official API Search
+    log_activity('sourcing', f'Step 1/5: 🚀 AliExpress Official API Search for "{keyword}"', 'in_progress')
     
-    # 🚀 Real HYBRID scraping (Alibaba + AliExpress) - NO TEST DATA
+    # 🚀 Real API search via AliExpress Affiliate API
     results = search_integrated_hybrid(keyword, max_results=50)
     
     if 'error' in results:
