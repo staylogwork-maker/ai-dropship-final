@@ -1922,22 +1922,43 @@ def execute_smart_sourcing(keyword):
     # Step 4: Sort by net profit (descending)
     profitable_products.sort(key=lambda x: x['analysis']['profit'], reverse=True)
     
-    # Step 4.5: 🚫 Filter out previously rejected products
+    # Step 4.5: 🚫 Filter out previously rejected products (only non-expired)
     app.logger.info(f'[Smart Sniper] Checking for previously rejected products...')
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('SELECT product_url FROM rejected_products WHERE keyword = ?', (keyword,))
+    
+    # Only get rejections that haven't expired yet
+    cursor.execute('''
+        SELECT product_url, expires_at 
+        FROM rejected_products 
+        WHERE keyword = ? 
+        AND (expires_at IS NULL OR expires_at > ?)
+    ''', (keyword, datetime.now().isoformat()))
+    
     rejected_urls = set(row[0] for row in cursor.fetchall())
+    
+    # Clean up expired rejections
+    cursor.execute('''
+        DELETE FROM rejected_products 
+        WHERE expires_at IS NOT NULL 
+        AND expires_at <= ?
+    ''', (datetime.now().isoformat(),))
+    
+    deleted_count = cursor.rowcount
+    if deleted_count > 0:
+        app.logger.info(f'[Smart Sniper] ♻️ Cleaned up {deleted_count} expired rejection(s)')
+    
+    conn.commit()
     conn.close()
     
     if rejected_urls:
-        app.logger.info(f'[Smart Sniper] Found {len(rejected_urls)} previously rejected products for keyword: {keyword}')
+        app.logger.info(f'[Smart Sniper] Found {len(rejected_urls)} currently rejected products for keyword: {keyword}')
         filtered_products = [p for p in profitable_products if p['url'] not in rejected_urls]
         rejected_count = len(profitable_products) - len(filtered_products)
-        app.logger.info(f'[Smart Sniper] Filtered out {rejected_count} previously rejected products')
+        app.logger.info(f'[Smart Sniper] Filtered out {rejected_count} rejected products')
         profitable_products = filtered_products
     else:
-        app.logger.info(f'[Smart Sniper] No previously rejected products found')
+        app.logger.info(f'[Smart Sniper] No active rejections found')
     
     # Step 5: Slice to Top 3 ONLY (or all products if debug mode)
     if debug_mode_enabled:
@@ -2151,7 +2172,7 @@ def start_sourcing():
 @login_required
 def reject_product():
     """
-    Mark a product as rejected so it won't be recommended again
+    Mark a product as rejected with expiration date
     
     Request JSON:
     {
@@ -2172,11 +2193,21 @@ def reject_product():
         conn = get_db()
         cursor = conn.cursor()
         
-        # Insert or ignore (UNIQUE constraint)
+        # Get rejection expiry days from config
+        cursor.execute("SELECT value FROM config WHERE key = 'rejection_expiry_days'")
+        row = cursor.fetchone()
+        expiry_days = int(row[0]) if row else 30
+        
+        # Calculate expiration date
+        from datetime import timedelta
+        expires_at = (datetime.now() + timedelta(days=expiry_days)).isoformat()
+        
+        # Insert or replace (update expiration if exists)
         cursor.execute('''
-            INSERT OR IGNORE INTO rejected_products (product_url, product_title, keyword)
-            VALUES (?, ?, ?)
-        ''', (product_url, product_title, keyword))
+            INSERT OR REPLACE INTO rejected_products 
+            (product_url, product_title, keyword, rejected_at, expires_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?)
+        ''', (product_url, product_title, keyword, expires_at))
         
         conn.commit()
         conn.close()
@@ -2184,12 +2215,14 @@ def reject_product():
         app.logger.info(f'[Product Reject] URL: {product_url[:50]}...')
         app.logger.info(f'[Product Reject] Title: {product_title[:50]}...')
         app.logger.info(f'[Product Reject] Keyword: {keyword}')
+        app.logger.info(f'[Product Reject] Expires at: {expires_at} ({expiry_days} days)')
         
-        log_activity('sourcing', f'Product rejected: {product_title[:30]}...', 'info')
+        log_activity('sourcing', f'Product rejected: {product_title[:30]}... (expires in {expiry_days} days)', 'info')
         
         return jsonify({
             'success': True,
-            'message': 'Product marked as rejected'
+            'message': f'Product rejected for {expiry_days} days',
+            'expires_at': expires_at
         })
         
     except Exception as e:
@@ -4470,22 +4503,46 @@ def analyze_product_market(product_id):
             'error': result.get('error', '시장 분석 실패')
         }), 500
     
+    # 쿠팡 API 분석 (선택적)
+    coupang_data = None
+    coupang_access_key = get_config('coupang_access_key')
+    coupang_secret_key = get_config('coupang_secret_key')
+    
+    if coupang_access_key and coupang_secret_key:
+        from market_analysis import analyze_coupang_market
+        app.logger.info(f'[Market Analysis] Also analyzing Coupang market...')
+        coupang_result = analyze_coupang_market(title, coupang_access_key, coupang_secret_key)
+        if coupang_result.get('success'):
+            coupang_data = coupang_result
+            app.logger.info(f'[Market Analysis] ✅ Coupang analysis completed')
+        else:
+            app.logger.warning(f'[Market Analysis] ⚠️ Coupang analysis failed: {coupang_result.get("error")}')
+    
     # 분석 결과를 DB에 저장
     analysis_data = {
         'keyword': result['keyword'],
-        'total_products': result['total_products'],
-        'analyzed_products': result['analyzed_products'],
-        'avg_price': result['avg_price'],
-        'median_price': result['median_price'],
-        'min_price': result['min_price'],
-        'max_price': result['max_price'],
-        'q1_price': result['q1_price'],
-        'q3_price': result['q3_price'],
-        'recommended_price': result['recommended_price'],
-        'price_distribution': result['price_distribution'],
-        'analysis_summary': result['analysis_summary'],
+        'sources': ['naver'],  # 분석 소스 추적
+        'naver': {
+            'total_products': result['total_products'],
+            'analyzed_products': result['analyzed_products'],
+            'avg_price': result['avg_price'],
+            'median_price': result['median_price'],
+            'min_price': result['min_price'],
+            'max_price': result['max_price'],
+            'q1_price': result['q1_price'],
+            'q3_price': result['q3_price'],
+            'recommended_price': result['recommended_price'],
+            'price_distribution': result['price_distribution'],
+            'analysis_summary': result['analysis_summary'],
+            'top_products': result['top_products'][:3]  # 상위 3개 참고 링크
+        },
+        'coupang': coupang_data if coupang_data else None,
         'timestamp': result['timestamp']
     }
+    
+    # 쿠팡 데이터가 있으면 sources에 추가
+    if coupang_data:
+        analysis_data['sources'].append('coupang')
     
     cursor.execute('''
         UPDATE sourced_products 

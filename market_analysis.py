@@ -113,16 +113,20 @@ def analyze_naver_market(keyword, client_id, client_secret):
                     'percentage': round(count / len(prices) * 100, 1)
                 }
         
-        # 상위 제품 정보
+        # 상위 제품 정보 (가격 있는 것만 필터링)
         top_products = []
-        for item in items[:10]:
-            top_products.append({
-                'title': item.get('title', '').replace('<b>', '').replace('</b>', ''),
-                'price': int(item.get('lprice', 0)),
-                'link': item.get('link', ''),
-                'image': item.get('image', ''),
-                'mall_name': item.get('mallName', '알 수 없음')
-            })
+        for item in items:
+            price = int(item.get('lprice', 0))
+            if price > 0:  # 0원 제품 제외
+                top_products.append({
+                    'title': item.get('title', '').replace('<b>', '').replace('</b>', ''),
+                    'price': price,
+                    'link': item.get('link', ''),
+                    'image': item.get('image', ''),
+                    'mall_name': item.get('mallName', '알 수 없음')
+                })
+            if len(top_products) >= 10:  # 최대 10개
+                break
         
         return {
             'success': True,

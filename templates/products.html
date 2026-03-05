@@ -326,6 +326,8 @@
                 }
                 
                 const analysis = result.analysis;
+                const naverData = analysis.naver || analysis;  // 하위 호환성
+                const coupangData = analysis.coupang;
                 
                 // Show detailed analysis modal
                 const modalHTML = `
@@ -341,28 +343,34 @@
                             <!-- Content -->
                             <div style="padding: 30px;">
                                 
-                                <!-- Keyword -->
+                                <!-- Keyword & Sources -->
                                 <div style="background: #f7fafc; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
                                     <div style="font-size: 14px; color: #718096; margin-bottom: 8px;">분석 키워드</div>
-                                    <div style="font-size: 20px; font-weight: 600; color: #2d3748;">${analysis.keyword}</div>
+                                    <div style="font-size: 20px; font-weight: 600; color: #2d3748; margin-bottom: 8px;">${analysis.keyword}</div>
+                                    <div style="font-size: 12px; color: #4a5568;">
+                                        분석 소스: 
+                                        ${(analysis.sources || ['naver']).map(s => 
+                                            s === 'naver' ? '🟢 네이버' : '🔵 쿠팡'
+                                        ).join(' · ')}
+                                    </div>
                                 </div>
                                 
                                 <!-- Key Metrics -->
                                 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 25px;">
                                     <div style="background: #ebf8ff; padding: 20px; border-radius: 12px; border: 2px solid #bee3f8;">
                                         <div style="font-size: 13px; color: #2c5282; margin-bottom: 8px;">📦 분석 상품 수</div>
-                                        <div style="font-size: 24px; font-weight: bold; color: #2c5282;">${analysis.analyzed_products.toLocaleString()}개</div>
-                                        <div style="font-size: 11px; color: #4a5568; margin-top: 4px;">전체 ${analysis.total_products.toLocaleString()}개</div>
+                                        <div style="font-size: 24px; font-weight: bold; color: #2c5282;">${naverData.analyzed_products.toLocaleString()}개</div>
+                                        <div style="font-size: 11px; color: #4a5568; margin-top: 4px;">전체 ${naverData.total_products.toLocaleString()}개</div>
                                     </div>
                                     <div style="background: #f0fff4; padding: 20px; border-radius: 12px; border: 2px solid #9ae6b4;">
                                         <div style="font-size: 13px; color: #276749; margin-bottom: 8px;">💰 평균 가격</div>
-                                        <div style="font-size: 24px; font-weight: bold; color: #276749;">₩${analysis.avg_price.toLocaleString()}</div>
-                                        <div style="font-size: 11px; color: #4a5568; margin-top: 4px;">중앙값 ₩${analysis.median_price.toLocaleString()}</div>
+                                        <div style="font-size: 24px; font-weight: bold; color: #276749;">₩${naverData.avg_price.toLocaleString()}</div>
+                                        <div style="font-size: 11px; color: #4a5568; margin-top: 4px;">중앙값 ₩${naverData.median_price.toLocaleString()}</div>
                                     </div>
                                     <div style="background: #fef5e7; padding: 20px; border-radius: 12px; border: 2px solid #fbd38d;">
                                         <div style="font-size: 13px; color: #7c2d12; margin-bottom: 8px;">🎯 권장 판매가</div>
-                                        <div style="font-size: 24px; font-weight: bold; color: #c05621;">₩${analysis.recommended_price.toLocaleString()}</div>
-                                        <div style="font-size: 11px; color: #4a5568; margin-top: 4px;">평균 대비 ${Math.round((1 - analysis.recommended_price / analysis.avg_price) * 100)}% 저렴</div>
+                                        <div style="font-size: 24px; font-weight: bold; color: #c05621;">₩${naverData.recommended_price.toLocaleString()}</div>
+                                        <div style="font-size: 11px; color: #4a5568; margin-top: 4px;">평균 대비 ${Math.round((1 - naverData.recommended_price / naverData.avg_price) * 100)}% 저렴</div>
                                     </div>
                                 </div>
                                 
@@ -372,32 +380,57 @@
                                     <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
                                         <div>
                                             <div style="font-size: 12px; color: #718096; margin-bottom: 5px;">최저가</div>
-                                            <div style="font-size: 20px; font-weight: 600; color: #48bb78;">₩${analysis.min_price.toLocaleString()}</div>
+                                            <div style="font-size: 20px; font-weight: 600; color: #48bb78;">₩${naverData.min_price.toLocaleString()}</div>
                                         </div>
                                         <div>
                                             <div style="font-size: 12px; color: #718096; margin-bottom: 5px;">최고가</div>
-                                            <div style="font-size: 20px; font-weight: 600; color: #f56565;">₩${analysis.max_price.toLocaleString()}</div>
+                                            <div style="font-size: 20px; font-weight: 600; color: #f56565;">₩${naverData.max_price.toLocaleString()}</div>
                                         </div>
                                         <div>
                                             <div style="font-size: 12px; color: #718096; margin-bottom: 5px;">하위 25% (Q1)</div>
-                                            <div style="font-size: 20px; font-weight: 600; color: #4299e1;">₩${analysis.q1_price.toLocaleString()}</div>
+                                            <div style="font-size: 20px; font-weight: 600; color: #4299e1;">₩${naverData.q1_price.toLocaleString()}</div>
                                         </div>
                                         <div>
                                             <div style="font-size: 12px; color: #718096; margin-bottom: 5px;">상위 25% (Q3)</div>
-                                            <div style="font-size: 20px; font-weight: 600; color: #ed8936;">₩${analysis.q3_price.toLocaleString()}</div>
+                                            <div style="font-size: 20px; font-weight: 600; color: #ed8936;">₩${naverData.q3_price.toLocaleString()}</div>
                                         </div>
                                     </div>
                                     <div style="margin-top: 15px; padding: 12px; background: #edf2f7; border-radius: 8px;">
                                         <div style="font-size: 13px; color: #4a5568;">💡 경쟁 가격대 (25%-75%)</div>
-                                        <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-top: 5px;">${analysis.analysis_summary.competitive_price_range}</div>
+                                        <div style="font-size: 16px; font-weight: 600; color: #2d3748; margin-top: 5px;">${naverData.analysis_summary.competitive_price_range}</div>
                                     </div>
                                 </div>
                                 
+                                <!-- Reference Links (Top 3) -->
+                                ${naverData.top_products && naverData.top_products.length > 0 ? `
+                                <div style="background: white; border: 2px solid #e2e8f0; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                                    <h3 style="font-size: 16px; font-weight: 600; color: #2d3748; margin: 0 0 15px 0;">🔗 참고 링크 Top 3</h3>
+                                    <div style="font-size: 12px; color: #718096; margin-bottom: 15px;">실제 네이버 쇼핑 검색 결과 (분석 근거)</div>
+                                    ${naverData.top_products.map((prod, idx) => `
+                                        <div style="padding: 15px; background: #f7fafc; border-radius: 8px; margin-bottom: 10px; border-left: 4px solid ${idx === 0 ? '#f59e0b' : idx === 1 ? '#3b82f6' : '#8b5cf6'};">
+                                            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                                <div style="flex: 1;">
+                                                    <div style="font-size: 14px; font-weight: 600; color: #2d3748; margin-bottom: 4px;">
+                                                        ${idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'} ${prod.title.substring(0, 60)}${prod.title.length > 60 ? '...' : ''}
+                                                    </div>
+                                                    <div style="font-size: 12px; color: #718096;">
+                                                        판매처: ${prod.mall_name} | 가격: <span style="font-weight: 600; color: #2d3748;">₩${prod.price.toLocaleString()}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <a href="${prod.link}" target="_blank" style="display: inline-block; font-size: 12px; color: #4299e1; text-decoration: none; padding: 6px 12px; background: white; border-radius: 6px; border: 1px solid #4299e1;">
+                                                🔗 링크 확인
+                                            </a>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                                ` : ''}
+                                
                                 <!-- Price Distribution -->
-                                ${Object.keys(analysis.price_distribution).length > 0 ? `
+                                ${naverData.price_distribution && Object.keys(naverData.price_distribution).length > 0 ? `
                                 <div style="background: white; border: 2px solid #e2e8f0; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
                                     <h3 style="font-size: 16px; font-weight: 600; color: #2d3748; margin: 0 0 15px 0;">📊 가격 분포</h3>
-                                    ${Object.entries(analysis.price_distribution).map(([range, data]) => `
+                                    ${Object.entries(naverData.price_distribution).map(([range, data]) => `
                                         <div style="margin-bottom: 12px;">
                                             <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
                                                 <span style="font-size: 13px; color: #4a5568;">${range}</span>
@@ -414,8 +447,8 @@
                                 <!-- Market Position -->
                                 <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 20px; border-radius: 12px; margin-bottom: 25px;">
                                     <h3 style="font-size: 16px; font-weight: 600; margin: 0 0 10px 0;">🎯 시장 포지셔닝</h3>
-                                    <div style="font-size: 18px; font-weight: 500;">${analysis.analysis_summary.market_position}</div>
-                                    <div style="font-size: 14px; opacity: 0.9; margin-top: 8px;">${analysis.analysis_summary.price_competitiveness}</div>
+                                    <div style="font-size: 18px; font-weight: 500;">${naverData.analysis_summary.market_position}</div>
+                                    <div style="font-size: 14px; opacity: 0.9; margin-top: 8px;">${naverData.analysis_summary.price_competitiveness}</div>
                                 </div>
                                 
                                 <!-- Action Buttons -->
