@@ -1015,6 +1015,162 @@ def parse_smart_price(price_text):
     prices = [float(n) for n in numbers]
     return min(prices)
 
+# ============================================================================
+# ALIEXPRESS OFFICIAL API INTEGRATION
+# ============================================================================
+
+def search_aliexpress_official(keyword, max_results=50):
+    """
+    Search AliExpress using Official Affiliate API
+    
+    Benefits:
+    - ✅ FREE (no ScrapingAnt cost)
+    - ✅ 100% success rate (no anti-bot blocks)
+    - ✅ Official product data
+    - ✅ Affiliate links included
+    
+    Args:
+        keyword (str): Search keyword
+        max_results (int): Maximum products to return (default 50)
+    
+    Returns:
+        dict: {
+            'products': [
+                {
+                    'title': str,
+                    'price': float (USD),
+                    'original_price': float,
+                    'url': str (affiliate link),
+                    'image': str,
+                    'product_id': str,
+                    'sale_price': float,
+                    'discount': str,
+                    'orders': int,
+                    'rating': float,
+                    'source': 'aliexpress_api'
+                }
+            ],
+            'count': int
+        }
+    """
+    import time
+    import hashlib
+    
+    app.logger.info(f'[AliExpress API] ========================================')
+    app.logger.info(f'[AliExpress API] 🚀 Official API search for: {keyword}')
+    
+    # Get API credentials from config
+    app_key = get_config('aliexpress_app_key')
+    app_secret = get_config('aliexpress_app_secret')
+    
+    if not app_key or not app_secret:
+        app.logger.error('[AliExpress API] ❌ Missing API credentials')
+        app.logger.error('[AliExpress API] Please configure in Settings:')
+        app.logger.error('[AliExpress API]   - aliexpress_app_key')
+        app.logger.error('[AliExpress API]   - aliexpress_app_secret')
+        return {'products': [], 'count': 0}
+    
+    # API endpoint
+    endpoint = "https://api-sg.aliexpress.com/sync"
+    
+    # GMT+8 timestamp
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(time.time() + 8*3600))
+    
+    # Request parameters
+    params = {
+        'app_key': app_key,
+        'method': 'aliexpress.affiliate.product.query',
+        'timestamp': timestamp,
+        'format': 'json',
+        'v': '2.0',
+        'sign_method': 'md5',
+        'keywords': keyword,
+        'page_size': str(min(max_results, 50)),  # API max: 50
+        'target_currency': 'USD',
+        'target_language': 'EN',
+        'sort': 'SALE_PRICE_ASC'  # Sort by price (low to high)
+    }
+    
+    # Generate signature
+    sorted_params = sorted(params.items())
+    sign_string = app_secret + ''.join([f'{k}{v}' for k, v in sorted_params]) + app_secret
+    signature = hashlib.md5(sign_string.encode('utf-8')).hexdigest().upper()
+    params['sign'] = signature
+    
+    try:
+        app.logger.info(f'[AliExpress API] 📡 Sending request...')
+        response = requests.get(endpoint, params=params, timeout=30)
+        
+        app.logger.info(f'[AliExpress API] 📊 Status: {response.status_code}')
+        
+        if response.status_code != 200:
+            app.logger.error(f'[AliExpress API] ❌ HTTP {response.status_code}')
+            return {'products': [], 'count': 0}
+        
+        data = response.json()
+        
+        # Check for API errors
+        if 'error_response' in data:
+            error = data['error_response']
+            app.logger.error(f'[AliExpress API] ❌ API Error: {error.get("msg", "Unknown")}')
+            app.logger.error(f'[AliExpress API]    Code: {error.get("code")} / Sub: {error.get("sub_code")}')
+            return {'products': [], 'count': 0}
+        
+        # Parse response
+        if 'aliexpress_affiliate_product_query_response' not in data:
+            app.logger.error('[AliExpress API] ❌ Unexpected response format')
+            return {'products': [], 'count': 0}
+        
+        result = data['aliexpress_affiliate_product_query_response']['resp_result']['result']
+        
+        if result['total_record_count'] == 0:
+            app.logger.warning(f'[AliExpress API] ⚠️  No products found for: {keyword}')
+            return {'products': [], 'count': 0}
+        
+        # Extract products
+        raw_products = result['products']['product']
+        products = []
+        
+        for product in raw_products:
+            try:
+                # Parse price
+                sale_price = float(product.get('target_sale_price', 0))
+                original_price = float(product.get('target_original_price', sale_price))
+                
+                # Calculate discount
+                discount = 0
+                if original_price > sale_price:
+                    discount = int((1 - sale_price / original_price) * 100)
+                
+                products.append({
+                    'title': product.get('product_title', 'Untitled'),
+                    'price': sale_price,
+                    'original_price': original_price,
+                    'url': product.get('promotion_link', product.get('product_detail_url', '')),
+                    'image': product.get('product_main_image_url', ''),
+                    'product_id': str(product.get('product_id', '')),
+                    'sale_price': sale_price,
+                    'discount': f'-{discount}%' if discount > 0 else '',
+                    'orders': 0,  # API doesn't provide order count
+                    'rating': 0.0,  # API doesn't provide rating
+                    'moq': 1,  # AliExpress default MOQ
+                    'source': 'aliexpress_api'
+                })
+            except Exception as e:
+                app.logger.error(f'[AliExpress API] Failed to parse product: {str(e)}')
+                continue
+        
+        app.logger.info(f'[AliExpress API] ✅ SUCCESS: {len(products)} products')
+        return {'products': products, 'count': len(products)}
+        
+    except Exception as e:
+        app.logger.error(f'[AliExpress API] ❌ Exception: {str(e)}')
+        return {'products': [], 'count': 0}
+
+# ============================================================================
+# LEGACY SCRAPING FUNCTIONS (DEPRECATED - USE OFFICIAL API)
+# ============================================================================
+
 def scrape_alibaba_search(keyword, max_results=50):
     """
     Scrape Alibaba.com with ULTIMATE anti-bot bypass
@@ -1463,40 +1619,34 @@ def scrape_aliexpress_search(keyword, max_results=50):
 
 def search_integrated_hybrid(keyword, max_results=50):
     """
-    🚀 HYBRID SOURCING ENGINE
-    Search Alibaba + AliExpress simultaneously
-    Merge results and select Top 3 based on price + margin + MOQ
+    🚀 OFFICIAL API SOURCING ENGINE (Updated 2026-03-05)
+    
+    ✅ Changed: Now uses AliExpress Official Affiliate API
+    ❌ Removed: Alibaba.com (MOQ too high for dropshipping)
+    ❌ Removed: ScrapingAnt dependency ($79/month saved)
+    
+    Search AliExpress only using Official API
+    Filter by margin and select best products
     """
-    app.logger.info(f'[Hybrid Engine] ========================================')
-    app.logger.info(f'[Hybrid Engine] 🚀 Starting HYBRID search for: {keyword}')
-    app.logger.info(f'[Hybrid Engine] Sources: Alibaba.com + AliExpress.com')
+    app.logger.info(f'[Search Engine] ========================================')
+    app.logger.info(f'[Search Engine] 🚀 Starting Official API search for: {keyword}')
+    app.logger.info(f'[Search Engine] Source: AliExpress Affiliate API')
     
-    # Step 1: Search Alibaba
-    app.logger.info('[Hybrid Engine] Step 1: Searching Alibaba.com...')
-    alibaba_result = scrape_alibaba_search(keyword, max_results)
-    alibaba_products = alibaba_result.get('products', [])
-    app.logger.info(f'[Hybrid Engine] ✅ Alibaba: {len(alibaba_products)} products')
+    # Search AliExpress using Official API
+    app.logger.info('[Search Engine] Searching AliExpress via Official API...')
+    aliexpress_result = search_aliexpress_official(keyword, max_results)
+    all_products = aliexpress_result.get('products', [])
+    app.logger.info(f'[Search Engine] ✅ Found: {len(all_products)} products')
     
-    # ⏱️ Rate Limit Protection: Wait 6 seconds between Alibaba and AliExpress
-    import time
-    app.logger.info('[Hybrid Engine] 💤 Waiting 6 seconds (Rate Limit Protection)...')
-    time.sleep(6)
-    
-    # Step 2: Search AliExpress
-    app.logger.info('[Hybrid Engine] Step 2: Searching AliExpress.com...')
-    aliexpress_result = scrape_aliexpress_search(keyword, max_results)
-    aliexpress_products = aliexpress_result.get('products', [])
-    app.logger.info(f'[Hybrid Engine] ✅ AliExpress: {len(aliexpress_products)} products')
-    
-    # Step 3: Merge and compare
-    all_products = alibaba_products + aliexpress_products
-    app.logger.info(f'[Hybrid Engine] Step 3: Merging {len(all_products)} total products')
+    # Changed from: Alibaba + AliExpress scraping
+    # To: AliExpress Official API only
+    # Reason: MOQ=1 for dropshipping, 100% success rate, $0 cost
     
     if len(all_products) == 0:
-        app.logger.error('[Hybrid Engine] ❌ FAILURE: No products found from either source')
-        app.logger.error('[Hybrid Engine] ❌ Both Alibaba and AliExpress scraping failed')
-        app.logger.error('[Hybrid Engine] ❌ Check ScrapingAnt logs above for specific blocking reasons')
-        return {'products': [], 'count': 0, 'error': 'No products found - anti-bot bypass failed'}
+        app.logger.error('[Search Engine] ❌ FAILURE: No products found')
+        app.logger.error('[Search Engine] ❌ AliExpress API returned no results')
+        app.logger.error('[Search Engine] ℹ️  Try different keyword or check API credentials')
+        return {'products': [], 'count': 0, 'error': 'No products found'}
     
     # Calculate profitability for each product
     for product in all_products:
@@ -1514,19 +1664,19 @@ def search_integrated_hybrid(keyword, max_results=50):
             
             product['hybrid_score'] = price_score + (margin_score * 2) + (moq_score * 3)
             
-            app.logger.debug(f'[Hybrid Score] {product["title"][:30]}: '
+            app.logger.debug(f'[Product Score] {product["title"][:30]}: '
                            f'Price=${product["price"]:.2f}, '
                            f'Margin={analysis["margin"]:.1f}%, '
                            f'MOQ={product["moq"]}, '
                            f'Score={product["hybrid_score"]:.1f}')
         except Exception as e:
-            app.logger.error(f'[Hybrid Engine] Failed to analyze product: {str(e)}')
+            app.logger.error(f'[Search Engine] Failed to analyze product: {str(e)}')
             product['hybrid_score'] = 0
     
     # Sort by hybrid score (descending)
     all_products.sort(key=lambda x: x.get('hybrid_score', 0), reverse=True)
     
-    app.logger.info(f'[Hybrid Engine] ✅ HYBRID search complete: {len(all_products)} products analyzed')
+    app.logger.info(f'[Search Engine] ✅ Search complete: {len(all_products)} products analyzed')
     return {'products': all_products, 'count': len(all_products)}
 
 def analyze_product_profitability(price_cny):
