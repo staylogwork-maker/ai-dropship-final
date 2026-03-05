@@ -1,32 +1,46 @@
 """
-Market Analysis Module
-실시간 네이버/쿠팡 시장 데이터 분석
+Market Analysis Module v2.0
+실시간 네이버/쿠팡 시장 데이터 분석 + 카테고리 필터링
 
 기능:
 1. 네이버 쇼핑 유사 제품 가격 분석
 2. 쿠팡 경쟁 제품 가격 분석
 3. 키워드 트렌드 분석
 4. 추천 판매가 계산
+5. 🆕 카테고리 기반 결과 필터링 (product_matcher 통합)
 """
 
 import requests
 import json
 from datetime import datetime, timedelta
 import statistics
+import logging
 
-def analyze_naver_market(keyword, client_id, client_secret):
+logger = logging.getLogger(__name__)
+
+def analyze_naver_market(keyword, client_id, client_secret, ali_product_title=None, enable_category_filter=True):
     """
-    네이버 쇼핑 API로 시장 분석
+    네이버 쇼핑 API로 시장 분석 (카테고리 필터링 지원)
+    
+    Args:
+        keyword: 검색 키워드 (한글)
+        client_id: 네이버 Client ID
+        client_secret: 네이버 Client Secret
+        ali_product_title: 알리익스프레스 제품명 (영문, 선택) - 카테고리 필터링에 사용
+        enable_category_filter: 카테고리 필터링 활성화 여부 (기본 True)
     
     Returns:
         dict: {
+            'success': True/False,
             'avg_price': 평균가,
             'min_price': 최저가,
             'max_price': 최고가,
             'total_products': 총 상품 수,
+            'filtered_products': 카테고리 필터링 후 상품 수,
             'price_distribution': 가격 분포,
             'recommended_price': 추천 판매가,
             'top_products': 상위 30개 제품,
+            'category_info': 카테고리 정보 (ali_product_title 제공 시),
             'timestamp': 조회 시간
         }
     """
@@ -62,9 +76,50 @@ def analyze_naver_market(keyword, client_id, client_secret):
                 'timestamp': datetime.now().isoformat()
             }
         
+        # 🆕 카테고리 필터링 (ali_product_title 제공 시)
+        filtered_items = items
+        category_info = {}
+        
+        if ali_product_title and enable_category_filter:
+            try:
+                from product_matcher import is_category_mismatch, classify_category
+                
+                ali_category = classify_category(ali_product_title)
+                category_info['ali_category'] = ali_category
+                
+                # 카테고리 미스매치 제외
+                filtered_items = []
+                mismatch_count = 0
+                
+                for item in items:
+                    naver_title = item.get('title', '')
+                    if not is_category_mismatch(ali_product_title, naver_title):
+                        filtered_items.append(item)
+                    else:
+                        mismatch_count += 1
+                
+                category_info['total_items'] = len(items)
+                category_info['filtered_items'] = len(filtered_items)
+                category_info['mismatch_count'] = mismatch_count
+                
+                logger.info(f"[Category Filter] {ali_category}: {len(items)} → {len(filtered_items)} (제외: {mismatch_count})")
+                
+                if not filtered_items:
+                    return {
+                        'success': False,
+                        'error': f'카테고리({ali_category}) 매칭 실패: 네이버 검색 결과가 모두 다른 카테고리입니다.',
+                        'category_info': category_info,
+                        'suggestion': f'"{keyword}" 대신 "{ali_category}" 관련 키워드로 재검색하세요.',
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    
+            except Exception as e:
+                logger.warning(f"[Category Filter] Failed: {e}. 필터링 없이 진행합니다.")
+                filtered_items = items
+        
         # 가격 추출 (문자열 → 숫자)
         prices = []
-        for item in items:
+        for item in filtered_items:
             try:
                 price = int(item.get('lprice', 0))  # lprice: 최저가
                 if price > 0:
@@ -120,9 +175,9 @@ def analyze_naver_market(keyword, client_id, client_secret):
                     'percentage': round(count / len(prices) * 100, 1)
                 }
         
-        # 상위 제품 정보 (가격 있는 것만 필터링)
+        # 상위 제품 정보 (필터링된 항목만, 가격 있는 것만)
         top_products = []
-        for item in items:
+        for item in filtered_items:
             price = int(item.get('lprice', 0))
             if price > 0:  # 0원 제품 제외
                 top_products.append({
@@ -135,10 +190,12 @@ def analyze_naver_market(keyword, client_id, client_secret):
             if len(top_products) >= 10:  # 최대 10개
                 break
         
-        return {
+        result = {
             'success': True,
             'keyword': keyword,
             'total_products': data.get('total', 0),
+            'searched_items': len(items),
+            'filtered_items': len(filtered_items),
             'analyzed_products': len(prices),
             'avg_price': int(avg_price),
             'median_price': int(median_price),
@@ -156,6 +213,12 @@ def analyze_naver_market(keyword, client_id, client_secret):
             },
             'timestamp': datetime.now().isoformat()
         }
+        
+        # 카테고리 정보 추가 (있으면)
+        if category_info:
+            result['category_info'] = category_info
+        
+        return result
         
     except Exception as e:
         return {
