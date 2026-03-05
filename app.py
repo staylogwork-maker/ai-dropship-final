@@ -1819,6 +1819,7 @@ def search_integrated_hybrid(keyword, max_results=50):
     🚀 OFFICIAL API SOURCING ENGINE (Updated 2026-03-05)
     
     ✅ Changed: Now uses AliExpress Official Affiliate API
+    ✅ NEW: Auto Korean → English translation for better search accuracy
     ❌ Removed: Alibaba.com (MOQ too high for dropshipping)
     ❌ Removed: ScrapingAnt dependency ($79/month saved)
     
@@ -1829,9 +1830,21 @@ def search_integrated_hybrid(keyword, max_results=50):
     app.logger.info(f'[Search Engine] 🚀 Starting Official API search for: {keyword}')
     app.logger.info(f'[Search Engine] Source: AliExpress Affiliate API')
     
+    # 🆕 한글 키워드면 영문으로 번역
+    search_keyword = keyword
+    if any('\uac00' <= c <= '\ud7a3' for c in keyword):  # 한글 감지
+        app.logger.info(f'[Search Engine] 🔤 Detected Korean keyword, translating...')
+        from product_matcher import translate_keyword_to_english
+        try:
+            search_keyword = translate_keyword_to_english(keyword)
+            app.logger.info(f'[Search Engine] ✅ Translation: "{keyword}" → "{search_keyword}"')
+        except Exception as e:
+            app.logger.warning(f'[Search Engine] ⚠️  Translation failed: {e}, using original')
+            search_keyword = keyword
+    
     # Search AliExpress using Official API
-    app.logger.info('[Search Engine] Searching AliExpress via Official API...')
-    aliexpress_result = search_aliexpress_official(keyword, max_results)
+    app.logger.info(f'[Search Engine] Searching AliExpress via Official API for: {search_keyword}...')
+    aliexpress_result = search_aliexpress_official(search_keyword, max_results)
     all_products = aliexpress_result.get('products', [])
     app.logger.info(f'[Search Engine] ✅ Found: {len(all_products)} products')
     
@@ -1932,6 +1945,12 @@ def execute_smart_sourcing(keyword):
     app.logger.info(f'[Smart Sniper] Executing REAL sourcing for keyword: {keyword}')
     app.logger.info(f'[Smart Sniper] NO TEST DATA - Only real Alibaba/AliExpress products')
     
+    # 🌐 CRITICAL FIX: Translate Korean keywords to English for AliExpress API
+    from aliexpress_matcher import translate_keyword_to_english
+    original_keyword = keyword
+    keyword = translate_keyword_to_english(keyword)
+    app.logger.info(f'[Smart Sniper] 🌐 Keyword translation: "{original_keyword}" → "{keyword}"')
+    
     # Initialize stage-by-stage tracking for UI feedback
     stage_stats = {
         'stage1_scraped': 0,
@@ -2026,6 +2045,55 @@ def execute_smart_sourcing(keyword):
             'stats': {'scanned': 0, 'safe': 0, 'profitable': 0, 'final_count': 0},
             'stage_stats': stage_stats
         }
+    
+    # 🎯 NEW: Product Matcher v2.0 - Naver Category Verification
+    log_activity('sourcing', 'Step 1.5/5: 🔍 Verifying product relevance with Naver market', 'in_progress')
+    app.logger.info(f'[Smart Sniper] 🔍 Starting Product Matcher v2.0 category filtering...')
+    
+    from product_matcher import clean_product_title, classify_category, translate_english_to_korean
+    from market_analysis import analyze_naver_market
+    
+    # Clean and classify first product as reference
+    if len(products) > 0:
+        sample_product = products[0]
+        cleaned_title = clean_product_title(sample_product['title'])
+        expected_category = classify_category(sample_product['title'])
+        korean_keyword = translate_english_to_korean(cleaned_title)
+        
+        app.logger.info(f'[Product Matcher] Sample product: {sample_product["title"][:50]}...')
+        app.logger.info(f'[Product Matcher] Cleaned title: {cleaned_title}')
+        app.logger.info(f'[Product Matcher] Expected category: {expected_category}')
+        app.logger.info(f'[Product Matcher] Korean keyword: {korean_keyword}')
+        
+        # Analyze Naver market for category matching
+        naver_client_id = get_config('naver_client_id', '')
+        naver_client_secret = get_config('naver_client_secret', '')
+        
+        if not naver_client_id or not naver_client_secret:
+            app.logger.warning('[Product Matcher] ⚠️ Naver API credentials not configured - skipping category verification')
+            naver_result = {'success': False, 'error': 'Naver API not configured'}
+        else:
+            naver_result = analyze_naver_market(
+                korean_keyword, 
+                naver_client_id, 
+                naver_client_secret,
+                ali_product_title=sample_product['title'],
+                enable_category_filter=True
+            )
+        
+        if naver_result['success']:
+            total_naver = naver_result['total_products']
+            matched_count = naver_result.get('category_matched_count', 0)
+            
+            app.logger.info(f'[Product Matcher] Naver results: {total_naver} total, {matched_count} category-matched')
+            
+            if matched_count < 5:
+                app.logger.warning(f'[Product Matcher] ⚠️ Low category match ({matched_count}/5) - results may be less relevant')
+                log_activity('sourcing', f'⚠️ Found only {matched_count} relevant items in Naver', 'warning')
+        else:
+            app.logger.warning(f'[Product Matcher] ⚠️ Naver analysis failed: {naver_result.get("error", "Unknown")}')
+    
+    app.logger.info(f'[Smart Sniper] ✅ Product Matcher v2.0 verification complete')
     
     # Step 2: Safety Filter (SKIP if debug mode enabled)
     log_activity('sourcing', 'Step 2/5: 🛡️ Applying safety filters', 'in_progress')

@@ -30,13 +30,20 @@ def translate_keyword_to_english(korean_keyword: str) -> str:
     한글 키워드 → 영문 키워드 변환 (Gemini → OpenAI → 규칙 기반 순)
     
     Args:
-        korean_keyword: 한글 키워드 (예: "차량용 USB 공기청정기")
+        korean_keyword: 한글 키워드 (예: "차량용 USB 공기청정기", "드라이기")
     
     Returns:
-        영문 키워드 (예: "car usb air purifier")
+        영문 키워드 (예: "car usb air purifier", "hair dryer")
     """
-    import google.generativeai as genai
-    import openai
+    try:
+        import google.generativeai as genai
+    except:
+        genai = None
+    
+    try:
+        import openai
+    except:
+        openai = None
     
     # 1단계: Gemini API 시도 (무료, 1,500 calls/day)
     gemini_key = get_config('gemini_api_key')
@@ -93,38 +100,85 @@ English:"""
         except Exception as e:
             logger.warning(f"[Translation-OpenAI] ❌ Failed: {e}")
     
-    # 3단계: 규칙 기반 매핑 (100% 폴백)
+    # 3단계: 규칙 기반 매핑 (100% 폴백) - 확장판
     translation_map = {
+        # 가전제품
+        '드라이기': 'hair dryer',
+        '헤어드라이기': 'hair dryer',
+        '공기청정기': 'air purifier',
+        '가습기': 'humidifier',
+        '선풍기': 'fan',
+        '청소기': 'vacuum cleaner',
+        '세척기': 'washer',
+        '세탁기': 'washing machine',
+        '건조기': 'dryer',
+        '냉장고': 'refrigerator',
+        '전자레인지': 'microwave',
+        '에어프라이어': 'air fryer',
+        '믹서기': 'blender',
+        '주전자': 'kettle',
+        
+        # 차량용품
         '차량용': 'car',
         '자동차': 'car',
-        '공기청정기': 'air purifier',
-        '반려동물': 'pet',
-        '급식기': 'feeder',
-        '자동': 'automatic',
+        '오토바이': 'motorcycle',
+        '자전거': 'bicycle',
+        
+        # 전자제품
         '무선': 'wireless',
-        '이어폰': 'earphone',
         '블루투스': 'bluetooth',
+        '이어폰': 'earphone',
+        '헤드폰': 'headphone',
         '스피커': 'speaker',
         '보조배터리': 'power bank',
         '충전기': 'charger',
         '휴대폰': 'phone',
+        '스마트폰': 'smartphone',
         '거치대': 'holder',
         '케이블': 'cable',
         '키보드': 'keyboard',
         '마우스': 'mouse',
         '게이밍': 'gaming',
         '기계식': 'mechanical',
+        '웹캠': 'webcam',
+        '마이크': 'microphone',
+        
+        # 반려동물
+        '반려동물': 'pet',
+        '강아지': 'dog',
+        '고양이': 'cat',
+        '급식기': 'feeder',
+        '급수기': 'water dispenser',
+        '화장실': 'litter box',
+        '장난감': 'toy',
+        
+        # 패션/악세서리
         '주얼리': 'jewelry',
         '목걸이': 'necklace',
         '반지': 'ring',
         '귀걸이': 'earring',
         '팔찌': 'bracelet',
-        '세척기': 'washer',
+        '시계': 'watch',
+        '가방': 'bag',
+        '지갑': 'wallet',
+        
+        # 주방/조리
+        '조리도구': 'cooking utensil',
+        '실리콘': 'silicone',
+        '세트': 'set',
+        '냄비': 'pot',
+        '프라이팬': 'frying pan',
+        '칼': 'knife',
+        '도마': 'cutting board',
+        
+        # 기타
+        '자동': 'automatic',
         '고압': 'high pressure',
         '청소': 'cleaning',
         '측정': 'measurement',
         '반도체': 'semiconductor',
         'IC칩': 'ic chip',
+        '다용도': 'multi purpose',
     }
     
     words = korean_keyword.split()
