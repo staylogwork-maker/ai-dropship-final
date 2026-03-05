@@ -111,6 +111,16 @@ Korean:"""
     
     # 3단계: 규칙 기반 매핑 (100% 폴백)
     translation_map = {
+        # 🔧 복합어 우선 매칭 (순서 중요!)
+        'hair dryer': '헤어 드라이어',
+        'power bank': '보조배터리',
+        'air purifier': '공기청정기',
+        'phone holder': '휴대폰 거치대',
+        'car charger': '차량용 충전기',
+        'bluetooth speaker': '블루투스 스피커',
+        'pet feeder': '반려동물 급식기',
+        'fan blade': '선풍기 날개',  # 🔧 추가
+        
         # 전자제품
         'phone': '휴대폰',
         'mobile': '휴대폰',
@@ -128,7 +138,9 @@ Korean:"""
         'wireless': '무선',
         'keyboard': '키보드',
         'mouse': '마우스',
-        'power bank': '보조배터리',
+        'dryer': '드라이어',  # 🔧 추가
+        'diffuser': '디퓨저',  # 🔧 추가
+        'blower': '블로워',  # 🔧 추가
         
         # 차량용품
         'car': '차량용',
@@ -139,21 +151,24 @@ Korean:"""
         'bicycle': '자전거',
         
         # 가전제품
-        'air purifier': '공기청정기',
         'humidifier': '가습기',
-        'fan': '선풍기',
+        # 'fan': '선풍기',  # 🔧 제거: "hair dryer fan"을 "선풍기"로 오역 방지
         'heater': '히터',
         'vacuum': '청소기',
         'cleaner': '청소기',
         'washer': '세척기',
         
         # 생활용품
-        'holder': '거치대',
         'organizer': '정리함',
         'storage': '수납',
         'bag': '가방',
         'case': '케이스',
         'cover': '커버',
+        'clip': '집게',  # 🔧 추가
+        'eyebrow': '눈썹',  # 🔧 추가
+        'switch': '스위치',  # 🔧 추가
+        'rocker': '로커',  # 🔧 추가
+        'control': '제어',  # 🔧 추가
         
         # 반려동물
         'pet': '반려동물',
@@ -167,23 +182,51 @@ Korean:"""
         'smart': '스마트',
         'portable': '휴대용',
         'mini': '미니',
+        'small': '소형',  # 🔧 추가
         'usb': 'USB',
         'high pressure': '고압',
         'waterproof': '방수',
+        'plastic': '플라스틱',  # 🔧 추가
     }
     
     # 영문 소문자 변환
     text_lower = english_text.lower()
     
-    # 각 단어/구문 매칭
+    # 🔧 복합어 우선 매칭 (긴 구문부터)
     korean_words = []
-    for eng, kor in translation_map.items():
+    matched_positions = []  # 매칭된 위치 저장
+    
+    # 복합어 먼저 찾기 (예: "hair dryer" > "hair", "dryer")
+    for eng, kor in sorted(translation_map.items(), key=lambda x: -len(x[0])):
         if eng in text_lower:
-            if kor not in korean_words:
+            # 이미 매칭된 부분이 아닌지 확인
+            pos = text_lower.find(eng)
+            if not any(start <= pos < end or start < pos + len(eng) <= end 
+                      for start, end in matched_positions):
                 korean_words.append(kor)
+                matched_positions.append((pos, pos + len(eng)))
+    
+    # 🔧 키워드가 없으면 AI 재시도 (Gemini만, 빠르게)
+    if not korean_words:
+        gemini_key = get_config('gemini_api_key')
+        if gemini_key:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=gemini_key)
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                prompt = f"""Translate to Korean shopping keyword (output ONLY Korean, no explanation):
+{english_text}"""
+                
+                response = model.generate_content(prompt)
+                korean = response.text.strip()
+                logger.info(f"[ENG→KOR RuleBased→Gemini Retry] ✅ {english_text} → {korean}")
+                return korean
+            except Exception as e:
+                logger.warning(f"[ENG→KOR Gemini Retry] ❌ {e}")
     
     korean = ' '.join(korean_words) if korean_words else english_text
-    logger.info(f"[ENG→KOR RuleBased] ⚠️ {english_text} → {korean}")
+    logger.info(f"[ENG→KOR RuleBased] {'✅' if korean_words else '⚠️'} {english_text} → {korean}")
     return korean
 
 
@@ -201,16 +244,35 @@ def clean_product_title(title: str) -> str:
     Returns:
         정제된 키워드 (예: "Bicycle Phone Holder")
     """
+    # 🔧 먼저 주요 카테고리 키워드 추출 (맥락 보존)
+    category_patterns = {
+        'hair dryer': ['hair dryer', 'hairdryer', 'hair blower'],
+        'phone holder': ['phone holder', 'phone mount', 'phone stand'],
+        'car charger': ['car charger', 'vehicle charger'],
+        'power bank': ['power bank', 'portable charger'],
+        'bluetooth speaker': ['bluetooth speaker', 'wireless speaker'],
+        'air purifier': ['air purifier', 'air cleaner'],
+        'pet feeder': ['pet feeder', 'automatic feeder'],
+    }
+    
+    title_lower = title.lower()
+    main_category = None
+    
+    for category, patterns in category_patterns.items():
+        for pattern in patterns:
+            if pattern in title_lower:
+                main_category = category
+                break
+        if main_category:
+            break
+    
     # 제거할 패턴들
     patterns_to_remove = [
-        r'\b\d+[\.\-~]\d+\s*(inch|mm|cm|kg|g|oz|lb)\b',  # 크기/무게 (3.5-7.2inch, 10cm, 5kg 등)
-        r'\b\d+\s*(piece|pcs|lot|set|pack)\b',  # 수량 (10pcs, 5 lot 등)
+        r'\b[A-Z0-9]{2,}\d+[A-Z0-9]*\b',  # 모델명 제거 (P82E, XYZ123 등)
+        r'\b\d+[\.\-~]\d+\s*(inch|mm|cm|kg|g|oz|lb)\b',  # 크기/무게
+        r'\b\d+\s*(piece|pcs|lot|set|pack|pcs|pc)\b',  # 수량
         r'\bfor\s+\w+\b',  # "for MTB", "for motorcycle" 등
-        r'\bmtb\b',  # MTB
-        r'\bgps\b',  # GPS
-        r'\bsupport\b',  # support
-        r'\bbracket\b',  # bracket
-        r'\baccessories\b',  # accessories
+        r'\b(mtb|gps|support|bracket|accessories|replacement|small|power)\b',  # 불필요 단어
         r'\bmobile\b',  # mobile (중복)
         r'\bcellphone\b',  # cellphone (phone과 중복)
     ]
@@ -222,10 +284,20 @@ def clean_product_title(title: str) -> str:
     # 연속된 공백 제거
     cleaned = re.sub(r'\s+', ' ', cleaned).strip()
     
-    # 핵심 키워드만 추출 (앞 3-5개 단어)
-    words = cleaned.split()
-    if len(words) > 5:
-        cleaned = ' '.join(words[:5])
+    # 🔧 주요 카테고리가 있으면 우선 사용
+    if main_category:
+        # 카테고리 + 추가 키워드 (예: "hair dryer diffuser")
+        words = cleaned.split()
+        additional_words = [w for w in words if w.lower() not in main_category.split()][:2]
+        if additional_words:
+            cleaned = f"{main_category} {' '.join(additional_words)}"
+        else:
+            cleaned = main_category
+    else:
+        # 핵심 키워드만 추출 (앞 3-4개 단어)
+        words = cleaned.split()
+        if len(words) > 4:
+            cleaned = ' '.join(words[:4])
     
     logger.info(f"[Clean Title] {title[:50]}... → {cleaned}")
     return cleaned

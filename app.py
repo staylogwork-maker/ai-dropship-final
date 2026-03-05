@@ -2322,6 +2322,16 @@ def execute_smart_sourcing(keyword):
             cleaned_title = clean_product_title(product['title'])
             product_korean_keyword = translate_english_to_korean(cleaned_title)
             
+            # 🚨 VALIDATION: 영어 키워드면 원본 제목으로 재시도
+            if product_korean_keyword == cleaned_title or not any('\uac00' <= c <= '\ud7a3' for c in product_korean_keyword):
+                app.logger.warning(f'[DB Save {idx+1}] ⚠️ Translation failed (got: {product_korean_keyword}), retrying with original title')
+                product_korean_keyword = translate_english_to_korean(product['title'])
+            
+            # 🚨 FINAL FALLBACK: 여전히 영어면 Blue Ocean 키워드 사용
+            if not any('\uac00' <= c <= '\ud7a3' for c in product_korean_keyword):
+                app.logger.error(f'[DB Save {idx+1}] ❌ Translation completely failed, using category keyword')
+                product_korean_keyword = korean_keyword
+            
             app.logger.info(f'[DB Save {idx+1}] Product keyword: {product_korean_keyword}')
             
             # Store market analysis with product-specific keyword
