@@ -185,7 +185,8 @@
             try {
                 const response = await fetch(`/api/content/generate/${productId}`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'}
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin'
                 });
                 
                 const result = await response.json();
@@ -207,7 +208,8 @@
             try {
                 const response = await fetch(`/api/products/${productId}/approve`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'}
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin'
                 });
                 
                 const result = await response.json();
@@ -277,7 +279,8 @@
                 // Delete from database
                 const deleteResponse = await fetch(`/api/products/${productId}`, {
                     method: 'DELETE',
-                    headers: {'Content-Type': 'application/json'}
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin'
                 });
                 
                 const deleteResult = await deleteResponse.json();
@@ -312,7 +315,8 @@
                 // Call API
                 const response = await fetch(`/api/products/${productId}/market-analysis`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'}
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin'
                 });
                 
                 const result = await response.json();
@@ -493,7 +497,8 @@
             try {
                 const response = await fetch(`/api/products/${productId}`, {
                     method: 'DELETE',
-                    headers: {'Content-Type': 'application/json'}
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin'
                 });
                 
                 const result = await response.json();

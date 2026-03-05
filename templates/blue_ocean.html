@@ -124,6 +124,7 @@
                 const response = await fetch('/api/blue-ocean/discover', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin',  // 🔧 쿠키 포함
                     body: JSON.stringify({
                         top_n: 20,
                         min_score: 5.0,
@@ -230,6 +231,7 @@
                 const response = await fetch('/api/blue-ocean/analyze', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin',  // 🔧 쿠키 포함
                     body: JSON.stringify({ keyword })
                 });
                 

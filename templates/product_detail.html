@@ -623,7 +623,8 @@
             try {
                 const response = await fetch(`/api/products/${productId}`, {
                     method: 'DELETE',
-                    headers: {'Content-Type': 'application/json'}
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin'
                 });
                 
                 const result = await response.json();

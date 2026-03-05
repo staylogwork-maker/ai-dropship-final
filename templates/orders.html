@@ -145,7 +145,8 @@
             try {
                 const response = await fetch(`/api/orders/${orderId}/confirm`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'}
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin'
                 });
                 
                 const result = await response.json();
@@ -191,7 +192,8 @@
             try {
                 const response = await fetch(`/api/orders/${orderId}/deliver`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'}
+                    headers: {'Content-Type': 'application/json'},
+                    credentials: 'same-origin'
                 });
                 
                 const result = await response.json();
@@ -221,7 +223,8 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    credentials: 'same-origin'
                 });
                 
                 const result = await response.json();
