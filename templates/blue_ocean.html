@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎯 Smart Sniper v2.0 - Blue Ocean Discovery</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    {% include 'nav.html' %}
+    
+    <div class="container mx-auto px-4 py-8">
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">🎯 Smart Sniper v2.0</h1>
+            <p class="text-gray-600">AI 기반 시장 분석 및 제품 발굴 시스템</p>
+        </div>
+        
+        <!-- Tabs -->
+        <div class="mb-6">
+            <div class="border-b border-gray-200">
+                <nav class="-mb-px flex space-x-8">
+                    <button onclick="showTab('auto')" id="tab-auto" class="tab-button border-b-2 border-blue-500 py-4 px-1 text-blue-600 font-medium">
+                        🤖 AI 자동 발견
+                    </button>
+                    <button onclick="showTab('manual')" id="tab-manual" class="tab-button border-b-2 border-transparent py-4 px-1 text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium">
+                        🔍 수동 검색
+                    </button>
+                </nav>
+            </div>
+        </div>
+        
+        <!-- Auto Discovery Tab -->
+        <div id="content-auto" class="tab-content">
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-gray-800">📈 오늘의 Blue Ocean 기회</h2>
+                    <button onclick="refreshOpportunities()" id="refresh-btn" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition">
+                        🔄 새로고침
+                    </button>
+                </div>
+                
+                <div id="opportunities-loading" class="text-center py-12">
+                    <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                    <p class="mt-4 text-gray-600">Blue Ocean 기회를 분석하는 중...</p>
+                </div>
+                
+                <div id="opportunities-list" class="hidden space-y-4">
+                    <!-- Opportunities will be inserted here -->
+                </div>
+                
+                <div id="opportunities-empty" class="hidden text-center py-12">
+                    <p class="text-gray-600">발견된 기회가 없습니다.</p>
+                    <button onclick="refreshOpportunities()" class="mt-4 bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">
+                        다시 검색
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Manual Search Tab -->
+        <div id="content-manual" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-lg p-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">🔍 키워드 직접 검색</h2>
+                
+                <div class="mb-6">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">검색 키워드</label>
+                    <div class="flex gap-2">
+                        <input 
+                            type="text" 
+                            id="manual-keyword" 
+                            placeholder="예: 차량용 공기청정기"
+                            class="flex-1 shadow appearance-none border rounded py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            onkeypress="if(event.key==='Enter') analyzeManualKeyword()"
+                        >
+                        <button onclick="analyzeManualKeyword()" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 transition">
+                            분석하기
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="manual-result" class="hidden">
+                    <!-- Manual analysis result will be inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        let currentTab = 'auto';
+        let cachedOpportunities = null;
+        
+        // Tab switching
+        function showTab(tab) {
+            currentTab = tab;
+            
+            // Update tabs
+            document.getElementById('tab-auto').className = tab === 'auto' 
+                ? 'tab-button border-b-2 border-blue-500 py-4 px-1 text-blue-600 font-medium'
+                : 'tab-button border-b-2 border-transparent py-4 px-1 text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium';
+            
+            document.getElementById('tab-manual').className = tab === 'manual'
+                ? 'tab-button border-b-2 border-blue-500 py-4 px-1 text-blue-600 font-medium'
+                : 'tab-button border-b-2 border-transparent py-4 px-1 text-gray-500 hover:text-gray-700 hover:border-gray-300 font-medium';
+            
+            // Update content
+            document.getElementById('content-auto').className = tab === 'auto' ? 'tab-content' : 'tab-content hidden';
+            document.getElementById('content-manual').className = tab === 'manual' ? 'tab-content' : 'tab-content hidden';
+        }
+        
+        // Auto discovery
+        async function refreshOpportunities(forceRefresh = false) {
+            const loadingEl = document.getElementById('opportunities-loading');
+            const listEl = document.getElementById('opportunities-list');
+            const emptyEl = document.getElementById('opportunities-empty');
+            const btnEl = document.getElementById('refresh-btn');
+            
+            loadingEl.classList.remove('hidden');
+            listEl.classList.add('hidden');
+            emptyEl.classList.add('hidden');
+            btnEl.disabled = true;
+            btnEl.textContent = '🔄 분석 중...';
+            
+            try {
+                const response = await fetch('/api/blue-ocean/discover', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        top_n: 20,
+                        min_score: 5.0,
+                        use_cache: !forceRefresh
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    cachedOpportunities = result.opportunities;
+                    displayOpportunities(result.opportunities, result.cached);
+                } else {
+                    alert('❌ 오류: ' + (result.error || '알 수 없는 오류'));
+                    emptyEl.classList.remove('hidden');
+                }
+            } catch (error) {
+                alert('❌ 오류: ' + error.message);
+                emptyEl.classList.remove('hidden');
+            } finally {
+                loadingEl.classList.add('hidden');
+                btnEl.disabled = false;
+                btnEl.textContent = '🔄 새로고침';
+            }
+        }
+        
+        function displayOpportunities(opportunities, cached) {
+            const listEl = document.getElementById('opportunities-list');
+            const emptyEl = document.getElementById('opportunities-empty');
+            
+            if (!opportunities || opportunities.length === 0) {
+                emptyEl.classList.remove('hidden');
+                return;
+            }
+            
+            const medals = ['🥇', '🥈', '🥉'];
+            
+            listEl.innerHTML = opportunities.map((opp, index) => {
+                const medal = index < 3 ? medals[index] : `${index + 1}.`;
+                const stars = '⭐'.repeat(Math.floor(opp.blue_ocean_score));
+                const levelClass = opp.level === 'excellent' ? 'bg-green-100 text-green-800' :
+                                   opp.level === 'good' ? 'bg-blue-100 text-blue-800' :
+                                   'bg-yellow-100 text-yellow-800';
+                
+                return `
+                    <div class="border rounded-lg p-4 hover:shadow-md transition">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex-1">
+                                <h3 class="text-lg font-bold text-gray-800">
+                                    ${medal} ${opp.keyword}
+                                </h3>
+                                <p class="text-sm text-gray-600 mt-1">${opp.recommendation}</p>
+                            </div>
+                            <span class="px-3 py-1 rounded-full text-sm font-medium ${levelClass}">
+                                ${stars} ${opp.blue_ocean_score}/10
+                            </span>
+                        </div>
+                        
+                        <div class="grid grid-cols-4 gap-4 text-sm mt-4">
+                            <div>
+                                <p class="text-gray-600">전체 제품</p>
+                                <p class="font-bold">${opp.market_data.total_products.toLocaleString()}개</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-600">평균 가격</p>
+                                <p class="font-bold">₩${opp.market_data.avg_price.toLocaleString()}</p>
+                            </div>
+                            <div>
+                                <p class="text-gray-600">권장 판매가</p>
+                                <p class="font-bold text-green-600">₩${opp.market_data.recommended_price.toLocaleString()}</p>
+                            </div>
+                            <div>
+                                <button onclick="findAliexpressSuppliers('${opp.keyword}', ${opp.market_data.avg_price})" 
+                                        class="w-full bg-orange-500 text-white px-4 py-2 rounded hover:bg-orange-600 transition text-sm">
+                                    알리에서 찾기 →
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            if (cached) {
+                listEl.innerHTML = '<div class="bg-blue-50 border border-blue-200 rounded p-3 mb-4 text-sm text-blue-800">💾 캐시된 데이터입니다 (24시간 이내)</div>' + listEl.innerHTML;
+            }
+            
+            listEl.classList.remove('hidden');
+        }
+        
+        // Manual search
+        async function analyzeManualKeyword() {
+            const keyword = document.getElementById('manual-keyword').value.trim();
+            const resultEl = document.getElementById('manual-result');
+            
+            if (!keyword) {
+                alert('키워드를 입력해주세요.');
+                return;
+            }
+            
+            resultEl.innerHTML = '<div class="text-center py-8"><div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div><p class="mt-2 text-gray-600">분석 중...</p></div>';
+            resultEl.classList.remove('hidden');
+            
+            try {
+                const response = await fetch('/api/blue-ocean/analyze', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ keyword })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    displayManualResult(result);
+                } else {
+                    resultEl.innerHTML = `<div class="bg-red-50 border border-red-200 rounded p-4 text-red-800">❌ ${result.error}</div>`;
+                }
+            } catch (error) {
+                resultEl.innerHTML = `<div class="bg-red-50 border border-red-200 rounded p-4 text-red-800">❌ ${error.message}</div>`;
+            }
+        }
+        
+        function displayManualResult(result) {
+            const resultEl = document.getElementById('manual-result');
+            const stars = '⭐'.repeat(Math.floor(result.blue_ocean_score));
+            const levelClass = result.level === 'excellent' ? 'bg-green-100 text-green-800 border-green-300' :
+                               result.level === 'good' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                               result.level === 'moderate' ? 'bg-yellow-100 text-yellow-800 border-yellow-300' :
+                               'bg-red-100 text-red-800 border-red-300';
+            
+            resultEl.innerHTML = `
+                <div class="border-2 ${levelClass} rounded-lg p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-2xl font-bold">${result.keyword}</h3>
+                            <p class="text-lg mt-2">${result.recommendation}</p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-3xl font-bold">${result.blue_ocean_score}/10</div>
+                            <div class="text-xl">${stars}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-4 mt-6">
+                        <div class="bg-white rounded p-4">
+                            <p class="text-gray-600 text-sm">전체 제품 수</p>
+                            <p class="text-2xl font-bold">${result.market_data.total_products.toLocaleString()}개</p>
+                        </div>
+                        <div class="bg-white rounded p-4">
+                            <p class="text-gray-600 text-sm">평균 가격</p>
+                            <p class="text-2xl font-bold">₩${result.market_data.avg_price.toLocaleString()}</p>
+                        </div>
+                        <div class="bg-white rounded p-4">
+                            <p class="text-gray-600 text-sm">권장 판매가</p>
+                            <p class="text-2xl font-bold text-green-600">₩${result.market_data.recommended_price.toLocaleString()}</p>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6">
+                        <button onclick="findAliexpressSuppliers('${result.keyword}', ${result.market_data.avg_price})" 
+                                class="w-full bg-orange-500 text-white px-6 py-3 rounded hover:bg-orange-600 transition text-lg font-medium">
+                            🔍 알리익스프레스에서 공급자 찾기 →
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Find AliExpress suppliers
+        async function findAliexpressSuppliers(keyword, naverAvgPrice) {
+            alert(`🔍 알리익스프레스에서 "${keyword}" 공급자를 찾습니다...\n\n평균 가격: ₩${naverAvgPrice.toLocaleString()}\n목표 마진: 30%\n\n잠시만 기다려주세요...`);
+            
+            // TODO: Implement AliExpress matching
+            setTimeout(() => {
+                alert('⚠️ 알리익스프레스 매칭 기능은 아직 구현 중입니다.\n다음 단계에서 추가됩니다!');
+            }, 1000);
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            refreshOpportunities();
+        });
+    </script>
+</body>
+</html>

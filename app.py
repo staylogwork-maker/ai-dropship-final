@@ -4029,6 +4029,12 @@ def dashboard():
                          monthly_profit_data=json.dumps(monthly_profit_data),
                          recent_logs=recent_logs)
 
+@app.route('/blue-ocean')
+@login_required
+def blue_ocean_page():
+    """Blue Ocean Discovery page"""
+    return render_template('blue_ocean.html')
+
 @app.route('/products')
 @login_required
 def products():
@@ -4852,6 +4858,271 @@ def analyze_product_market(product_id):
         'cached': False,
         'analysis': analysis_data
     })
+
+# ============================================================================
+# BLUE OCEAN DISCOVERY API
+# ============================================================================
+
+@app.route('/api/blue-ocean/discover', methods=['POST'])
+@login_required
+def discover_blue_ocean():
+    """
+    Blue Ocean 기회 자동 발견
+    
+    POST /api/blue-ocean/discover
+    {
+        "top_n": 20,           # 추출할 상위 기회 수 (기본 20)
+        "min_score": 5.0,      # 최소 Blue Ocean 점수 (기본 5.0)
+        "use_cache": true      # 캐시 사용 여부 (기본 true)
+    }
+    """
+    from blue_ocean_discovery import (
+        discover_blue_ocean_opportunities,
+        get_cached_opportunities,
+        save_opportunities_to_cache
+    )
+    
+    data = request.json or {}
+    top_n = data.get('top_n', 20)
+    min_score = data.get('min_score', 5.0)
+    use_cache = data.get('use_cache', True)
+    
+    # 네이버 API 인증 정보
+    naver_client_id = get_config('naver_client_id')
+    naver_client_secret = get_config('naver_client_secret')
+    
+    if not naver_client_id or not naver_client_secret:
+        return jsonify({
+            'success': False,
+            'error': '네이버 API 인증 정보가 설정되지 않았습니다.'
+        }), 400
+    
+    # 캐시 확인
+    if use_cache:
+        conn = get_db()
+        cached = get_cached_opportunities(conn, max_age_hours=24)
+        conn.close()
+        
+        if cached and len(cached) >= 5:
+            app.logger.info(f'[Blue Ocean] 💾 캐시에서 {len(cached)}개 기회 반환')
+            return jsonify({
+                'success': True,
+                'cached': True,
+                'opportunities': cached,
+                'count': len(cached)
+            })
+    
+    # 새로 발견
+    app.logger.info(f'[Blue Ocean] 🔍 새로운 기회 발견 시작 (Top {top_n}, Min {min_score})')
+    
+    try:
+        opportunities = discover_blue_ocean_opportunities(
+            naver_client_id,
+            naver_client_secret,
+            top_n=top_n,
+            min_score=min_score
+        )
+        
+        # 캐시에 저장
+        if opportunities:
+            conn = get_db()
+            save_opportunities_to_cache(conn, opportunities)
+            conn.close()
+        
+        log_activity('blue_ocean', f'Discovered {len(opportunities)} opportunities', 'success')
+        
+        return jsonify({
+            'success': True,
+            'cached': False,
+            'opportunities': opportunities,
+            'count': len(opportunities)
+        })
+        
+    except Exception as e:
+        app.logger.error(f'[Blue Ocean] ❌ 발견 실패: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/blue-ocean/analyze', methods=['POST'])
+@login_required
+def analyze_blue_ocean_keyword():
+    """
+    단일 키워드에 대한 Blue Ocean 분석 (수동 검색용)
+    
+    POST /api/blue-ocean/analyze
+    {
+        "keyword": "차량용 공기청정기"
+    }
+    """
+    from blue_ocean_discovery import analyze_market_opportunity
+    
+    data = request.json or {}
+    keyword = data.get('keyword', '').strip()
+    
+    if not keyword:
+        return jsonify({
+            'success': False,
+            'error': '키워드를 입력해주세요.'
+        }), 400
+    
+    # 네이버 API 인증 정보
+    naver_client_id = get_config('naver_client_id')
+    naver_client_secret = get_config('naver_client_secret')
+    
+    if not naver_client_id or not naver_client_secret:
+        return jsonify({
+            'success': False,
+            'error': '네이버 API 인증 정보가 설정되지 않았습니다.'
+        }), 400
+    
+    app.logger.info(f'[Blue Ocean] 🔍 수동 분석: {keyword}')
+    
+    try:
+        result = analyze_market_opportunity(keyword, naver_client_id, naver_client_secret)
+        
+        log_activity('blue_ocean', f'Manual analysis: {keyword} (Score: {result.get("blue_ocean_score", 0)})', 'info')
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        app.logger.error(f'[Blue Ocean] ❌ 분석 실패: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/blue-ocean/match-aliexpress', methods=['POST'])
+@login_required
+def match_aliexpress_suppliers():
+    """
+    네이버 키워드로 알리익스프레스 공급자 찾기
+    
+    POST /api/blue-ocean/match-aliexpress
+    {
+        "keyword": "차량용 공기청정기",
+        "target_margin": 30,          # 목표 마진율 (%)
+        "naver_avg_price": 50000      # 네이버 평균 가격
+    }
+    """
+    data = request.json or {}
+    keyword = data.get('keyword', '').strip()
+    target_margin = data.get('target_margin', 30)
+    naver_avg_price = data.get('naver_avg_price', 0)
+    
+    if not keyword:
+        return jsonify({
+            'success': False,
+            'error': '키워드를 입력해주세요.'
+        }), 400
+    
+    app.logger.info(f'[Blue Ocean] 🔍 알리 매칭: {keyword}')
+    
+    try:
+        # 1. 키워드 영어 번역 (간단한 매핑 또는 AI 사용)
+        # TODO: 더 정교한 번역 로직 필요
+        english_keyword = translate_to_english(keyword)
+        
+        # 2. 알리익스프레스 검색
+        ali_products = search_aliexpress_official(english_keyword, max_results=50)
+        
+        if not ali_products or not ali_products.get('products'):
+            return jsonify({
+                'success': False,
+                'error': f'알리익스프레스에서 "{english_keyword}" 검색 결과가 없습니다.'
+            }), 404
+        
+        # 3. 마진 필터링
+        cny_rate = float(get_config('cny_exchange_rate') or 190)
+        shipping_cost = float(get_config('shipping_cost_base') or 5000)
+        naver_fee = float(get_config('naver_fee_rate') or 0.06)
+        
+        matched_products = []
+        
+        for product in ali_products['products']:
+            price_usd = product.get('price', 0)
+            if price_usd == 0:
+                continue
+            
+            # USD → KRW
+            price_krw = price_usd * cny_rate * 1.05  # 5% 환율 버퍼
+            
+            # 마진 계산
+            if naver_avg_price > 0:
+                total_cost = price_krw + shipping_cost
+                revenue = naver_avg_price * (1 - naver_fee)
+                margin = (revenue - total_cost) / revenue * 100
+                
+                if margin >= target_margin:
+                    matched_products.append({
+                        'title': product.get('title', ''),
+                        'price_usd': price_usd,
+                        'price_krw': int(price_krw),
+                        'estimated_margin': round(margin, 1),
+                        'naver_selling_price': naver_avg_price,
+                        'url': product.get('url', ''),
+                        'image': product.get('image', ''),
+                        'rating': product.get('rating', 0),
+                        'orders': product.get('orders', 0)
+                    })
+        
+        matched_products.sort(key=lambda x: x['estimated_margin'], reverse=True)
+        
+        return jsonify({
+            'success': True,
+            'keyword_kr': keyword,
+            'keyword_en': english_keyword,
+            'naver_avg_price': naver_avg_price,
+            'target_margin': target_margin,
+            'matched_count': len(matched_products),
+            'products': matched_products[:20]  # 상위 20개
+        })
+        
+    except Exception as e:
+        app.logger.error(f'[Blue Ocean] ❌ 알리 매칭 실패: {str(e)}')
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+def translate_to_english(korean_keyword):
+    """
+    한국어 키워드를 영어로 번역 (간단한 매핑)
+    
+    TODO: Gemini/OpenAI API 사용하여 더 정교하게 번역
+    """
+    # 간단한 카테고리 매핑
+    translation_map = {
+        '차량용 공기청정기': 'car air purifier',
+        '반려동물 자동 급식기': 'automatic pet feeder',
+        '무선 이어폰': 'wireless earphones',
+        '블루투스 스피커': 'bluetooth speaker',
+        '보조배터리': 'power bank',
+        '휴대폰 거치대': 'phone holder',
+        '차량용 충전기': 'car charger',
+        '공기청정기': 'air purifier',
+        '가습기': 'humidifier',
+        '로봇청소기': 'robot vacuum',
+        '마사지건': 'massage gun',
+        'LED 조명': 'LED light',
+        # 더 많은 매핑 추가...
+    }
+    
+    # 정확한 매칭
+    if korean_keyword in translation_map:
+        return translation_map[korean_keyword]
+    
+    # 부분 매칭
+    for kr, en in translation_map.items():
+        if kr in korean_keyword:
+            return en
+    
+    # 매핑 실패 시 원문 반환 (알리 API가 다국어 지원)
+    return korean_keyword
 
 # ============================================================================
 # MAIN
