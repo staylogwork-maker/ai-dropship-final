@@ -35,6 +35,7 @@ import schedule
 import threading
 import logging
 from logging.handlers import RotatingFileHandler
+from market_analysis import analyze_naver_market, get_naver_keyword_trend
 
 # Set Korea timezone globally
 KST = pytz.timezone('Asia/Seoul')
@@ -1979,8 +1980,39 @@ def execute_smart_sourcing(keyword):
             'suggestion': f'No products found. Highest margin was {highest_margin:.1f}% (target: {target_margin}%). Consider lowering margin target or enabling Debug Mode.'
         }
     
+    # Step 5.5: 📊 Market Analysis (Naver Shopping)
+    app.logger.info(f'[Smart Sniper] 📊 Starting market analysis for keyword: {keyword}')
+    log_activity('sourcing', 'Step 5/5: 📊 Analyzing market prices (Naver Shopping)', 'in_progress')
+    
+    market_data = None
+    naver_client_id = get_config('naver_client_id', '')
+    naver_client_secret = get_config('naver_client_secret', '')
+    
+    if naver_client_id and naver_client_secret:
+        try:
+            market_data = analyze_naver_market(keyword, naver_client_id, naver_client_secret)
+            
+            if market_data.get('success'):
+                app.logger.info(f'[Market Analysis] ✅ SUCCESS')
+                app.logger.info(f'[Market Analysis] Total products analyzed: {market_data["analyzed_products"]}')
+                app.logger.info(f'[Market Analysis] Average price: ₩{market_data["avg_price"]:,}')
+                app.logger.info(f'[Market Analysis] Price range: ₩{market_data["min_price"]:,} ~ ₩{market_data["max_price"]:,}')
+                app.logger.info(f'[Market Analysis] Recommended price: ₩{market_data["recommended_price"]:,}')
+                app.logger.info(f'[Market Analysis] Market position: {market_data["analysis_summary"]["market_position"]}')
+                
+                log_activity('sourcing', f'✅ Market analysis: Avg ₩{market_data["avg_price"]:,}, Recommend ₩{market_data["recommended_price"]:,}', 'success')
+            else:
+                app.logger.warning(f'[Market Analysis] ⚠️ Failed: {market_data.get("error")}')
+                log_activity('sourcing', f'⚠️ Market analysis failed: {market_data.get("error")}', 'warning')
+        except Exception as e:
+            app.logger.error(f'[Market Analysis] ❌ Exception: {str(e)}')
+            market_data = None
+    else:
+        app.logger.warning('[Market Analysis] ⚠️ Naver API credentials not configured')
+        log_activity('sourcing', '⚠️ Market analysis skipped (API credentials missing)', 'warning')
+    
     # Step 6: Save Top 3 to Database
-    log_activity('sourcing', 'Step 5/5: 💾 Saving Top 3 to database', 'in_progress')
+    log_activity('sourcing', 'Step 6/6: 💾 Saving Top 3 to database', 'in_progress')
     app.logger.info(f'[Smart Sniper] Attempting to save {len(top_3)} products to database')
     
     conn = get_db()
@@ -2042,7 +2074,8 @@ def execute_smart_sourcing(keyword):
             'final_count': len(top_3)
         },
         'stage_stats': stage_stats,
-        'debug_mode_enabled': debug_mode_enabled
+        'debug_mode_enabled': debug_mode_enabled,
+        'market_analysis': market_data  # 시장 분석 데이터 추가
     }
 
 @app.route('/api/sourcing/start', methods=['POST'])

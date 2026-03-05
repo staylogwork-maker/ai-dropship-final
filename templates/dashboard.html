@@ -382,6 +382,20 @@
                     message += `- 안전필터 통과: ${stats.safe}개\n`;
                     message += `- 마진 기준 통과: ${stats.profitable}개\n`;
                     message += `- ⭐ Top 3 선정: ${stats.final_count}개\n\n`;
+                    
+                    // 시장 분석 데이터 추가
+                    if (result.market_analysis && result.market_analysis.success) {
+                        const ma = result.market_analysis;
+                        message += `📈 네이버 쇼핑 시장 분석:\n`;
+                        message += `- 분석 상품 수: ${ma.analyzed_products}개\n`;
+                        message += `- 평균 판매가: ₩${ma.avg_price.toLocaleString()}원\n`;
+                        message += `- 가격 범위: ₩${ma.min_price.toLocaleString()} ~ ₩${ma.max_price.toLocaleString()}원\n`;
+                        message += `- 경쟁 가격대: ${ma.analysis_summary.competitive_price_range}\n`;
+                        message += `- 💡 추천 판매가: ₩${ma.recommended_price.toLocaleString()}원\n`;
+                        message += `- 시장 포지션: ${ma.analysis_summary.market_position}\n`;
+                        message += `- 가격 경쟁력: ${ma.analysis_summary.price_competitiveness}\n\n`;
+                    }
+                    
                     message += '💾 상품 관리 페이지에서 확인하세요!';
                     
                     alert(message);
