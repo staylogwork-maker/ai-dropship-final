@@ -125,16 +125,40 @@
                         </div>
                     </div>
                     
+                    <!-- AliExpress Official API Configuration -->
+                    <div class="bg-green-50 border-2 border-green-400 rounded-lg p-4 mb-4">
+                        <div class="flex items-start">
+                            <span class="text-2xl mr-3">✅</span>
+                            <div>
+                                <label class="block text-gray-800 text-sm font-bold mb-1">
+                                    AliExpress Official API (활성화됨)
+                                </label>
+                                <p class="text-xs text-gray-700 leading-relaxed">
+                                    <strong>App Key:</strong> 528898 | 
+                                    <strong>Status:</strong> Active | 
+                                    <strong>Cost:</strong> $0/month (무료)
+                                </p>
+                                <p class="text-xs text-green-600 font-semibold mt-1">
+                                    💰 ScrapingAnt 대체 완료 - 연간 $948 절감!
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Deprecated: ScrapingAnt (Removed 2026-03-05) -->
+                    <!-- 
                     <div>
-                        <label class="block text-gray-700 text-sm font-bold mb-2">ScrapingAnt API Key</label>
+                        <label class="block text-gray-700 text-sm font-bold mb-2">ScrapingAnt API Key (사용 안 함)</label>
                         <input 
                             type="password" 
                             id="scrapingant_api_key" 
                             value="{{ configs.get('scrapingant_api_key', '') }}"
                             class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            placeholder="통합 스크래핑용"
+                            placeholder="[DEPRECATED] AliExpress Official API로 대체됨"
+                            disabled
                         >
                     </div>
+                    -->
                     
                     <div>
                         <label class="block text-gray-700 text-sm font-bold mb-2">OpenAI API Key</label>
@@ -248,7 +272,7 @@
                 customs_tax_rate: document.getElementById('customs_tax_rate').value,
                 naver_fee_rate: document.getElementById('naver_fee_rate').value,
                 coupang_fee_rate: document.getElementById('coupang_fee_rate').value,
-                scrapingant_api_key: document.getElementById('scrapingant_api_key').value,
+                // scrapingant_api_key: document.getElementById('scrapingant_api_key').value, // REMOVED: AliExpress API migration
                 openai_api_key: document.getElementById('openai_api_key').value,
                 naver_client_id: document.getElementById('naver_client_id').value,
                 naver_client_secret: document.getElementById('naver_client_secret').value,
