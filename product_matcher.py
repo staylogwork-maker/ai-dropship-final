@@ -119,7 +119,13 @@ Korean:"""
         'car charger': '차량용 충전기',
         'bluetooth speaker': '블루투스 스피커',
         'pet feeder': '반려동물 급식기',
-        'fan blade': '선풍기 날개',  # 🔧 추가
+        'fan blade': '선풍기 날개',
+        'mouse pad': '마우스 패드',  # 🔧 추가: 마우스패드
+        'mousepad': '마우스패드',  # 🔧 추가: 마우스패드 (붙여쓰기)
+        'gaming mouse pad': '게이밍 마우스패드',  # 🔧 추가
+        'wrist rest': '손목받침대',  # 🔧 추가: 손목쿠션
+        'palm rest': '손목받침대',  # 🔧 추가
+        'keyboard pad': '키보드 패드',  # 🔧 추가: 키보드 손목받침
         
         # 전자제품
         'phone': '휴대폰',
@@ -137,10 +143,10 @@ Korean:"""
         'bluetooth': '블루투스',
         'wireless': '무선',
         'keyboard': '키보드',
-        'mouse': '마우스',
-        'dryer': '드라이어',  # 🔧 추가
-        'diffuser': '디퓨저',  # 🔧 추가
-        'blower': '블로워',  # 🔧 추가
+        # 'mouse': '마우스',  # 🔧 제거: "mouse pad"를 "마우스"로 오역 방지
+        'dryer': '드라이어',
+        'diffuser': '디퓨저',
+        'blower': '블로워',
         
         # 차량용품
         'car': '차량용',
@@ -164,11 +170,22 @@ Korean:"""
         'bag': '가방',
         'case': '케이스',
         'cover': '커버',
-        'clip': '집게',  # 🔧 추가
-        'eyebrow': '눈썹',  # 🔧 추가
-        'switch': '스위치',  # 🔧 추가
-        'rocker': '로커',  # 🔧 추가
-        'control': '제어',  # 🔧 추가
+        'clip': '집게',
+        'eyebrow': '눈썹',
+        'switch': '스위치',
+        'rocker': '로커',
+        'control': '제어',
+        'pad': '패드',  # 🔧 추가
+        'mat': '매트',  # 🔧 추가
+        'cushion': '쿠션',  # 🔧 추가
+        'foam': '폼',  # 🔧 추가
+        'memory foam': '메모리 폼',  # 🔧 추가
+        'gaming': '게이밍',  # 🔧 추가
+        'gamer': '게이머',  # 🔧 추가
+        'rgb': 'RGB',  # 🔧 추가
+        'led': 'LED',  # 🔧 추가
+        'large': '대형',  # 🔧 추가
+        'xxl': '초대형',  # 🔧 추가
         
         # 반려동물
         'pet': '반려동물',
@@ -253,6 +270,8 @@ def clean_product_title(title: str) -> str:
         'bluetooth speaker': ['bluetooth speaker', 'wireless speaker'],
         'air purifier': ['air purifier', 'air cleaner'],
         'pet feeder': ['pet feeder', 'automatic feeder'],
+        'mouse pad': ['mouse pad', 'mousepad', 'gaming mouse pad', 'gaming mousepad'],  # 🔧 추가
+        'wrist rest': ['wrist rest', 'palm rest', 'keyboard wrist rest'],  # 🔧 추가
     }
     
     title_lower = title.lower()
@@ -268,11 +287,12 @@ def clean_product_title(title: str) -> str:
     
     # 제거할 패턴들
     patterns_to_remove = [
+        r'\b[A-Z][a-z]+\s+[A-Z][a-z]+\s+\d+\b',  # 🔧 게임/브랜드명 (Silent Hill 3, Grand Theft Auto 5)
         r'\b[A-Z0-9]{2,}\d+[A-Z0-9]*\b',  # 모델명 제거 (P82E, XYZ123 등)
         r'\b\d+[\.\-~]\d+\s*(inch|mm|cm|kg|g|oz|lb)\b',  # 크기/무게
         r'\b\d+\s*(piece|pcs|lot|set|pack|pcs|pc)\b',  # 수량
         r'\bfor\s+\w+\b',  # "for MTB", "for motorcycle" 등
-        r'\b(mtb|gps|support|bracket|accessories|replacement|small|power)\b',  # 불필요 단어
+        r'\b(mtb|gps|support|bracket|accessories|replacement|small|power|pc|computer|office)\b',  # 🔧 불필요 단어
         r'\bmobile\b',  # mobile (중복)
         r'\bcellphone\b',  # cellphone (phone과 중복)
     ]
