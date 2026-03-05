@@ -2186,6 +2186,26 @@ def execute_smart_sourcing(keyword):
     # Step 4: Sort by net profit (descending)
     profitable_products.sort(key=lambda x: x['analysis']['profit'], reverse=True)
     
+    # Step 4.3: 🎯 Remove duplicate products (same title)
+    app.logger.info(f'[Smart Sniper] Removing duplicate products...')
+    seen_titles = set()
+    unique_products = []
+    duplicate_count = 0
+    
+    for product in profitable_products:
+        # Normalize title for comparison (lowercase, remove extra spaces)
+        normalized_title = ' '.join(product['title'].lower().split())
+        
+        if normalized_title not in seen_titles:
+            seen_titles.add(normalized_title)
+            unique_products.append(product)
+        else:
+            duplicate_count += 1
+            app.logger.debug(f'[Smart Sniper] Duplicate removed: {product["title"][:50]}...')
+    
+    app.logger.info(f'[Smart Sniper] Removed {duplicate_count} duplicates, {len(unique_products)} unique products remain')
+    profitable_products = unique_products
+    
     # Step 4.5: 🚫 Filter out previously rejected products (only non-expired)
     app.logger.info(f'[Smart Sniper] Checking for previously rejected products...')
     conn = get_db()
@@ -2224,15 +2244,44 @@ def execute_smart_sourcing(keyword):
     else:
         app.logger.info(f'[Smart Sniper] No active rejections found')
     
-    # Step 5: Slice to Top 3 ONLY (or all products if debug mode)
+    # Step 5: Select diverse Top 3 (or more if debug mode)
     if debug_mode_enabled:
         # 🐛 DEBUG MODE: Return ALL products instead of just top 3
         top_3 = profitable_products[:50]  # Cap at 50 to avoid UI overload
         app.logger.warning(f'[Smart Sniper] 🐛 DEBUG MODE: Returning TOP {len(top_3)} products (not limited to 3)')
         log_activity('sourcing', f'Step 4/5: 🐛 Debug mode: Top {len(top_3)} selected', 'warning')
     else:
-        top_3 = profitable_products[:3]
-        log_activity('sourcing', f'Step 4/5: 🎯 Top 3 selected (sorted by profit, rejected products excluded)', 'success')
+        # 🎯 Select diverse products (different price ranges)
+        if len(profitable_products) >= 3:
+            # Diversify: Top profit + Mid-range + Budget option
+            top_3 = []
+            
+            # 1. Highest profit (best margin)
+            top_3.append(profitable_products[0])
+            
+            # 2. Different price range (중간 가격대)
+            first_price = profitable_products[0]['analysis']['sale_price']
+            for product in profitable_products[1:]:
+                price_diff = abs(product['analysis']['sale_price'] - first_price) / first_price
+                # 가격이 20% 이상 차이나면 선택
+                if price_diff >= 0.2 and product not in top_3:
+                    top_3.append(product)
+                    break
+            
+            # 3. Fallback: Just pick different products
+            for product in profitable_products[1:]:
+                if len(top_3) >= 3:
+                    break
+                if product not in top_3:
+                    top_3.append(product)
+            
+            app.logger.info(f'[Smart Sniper] 🎯 Selected {len(top_3)} diverse products (price ranges: ' + 
+                          ', '.join([f'₩{p["analysis"]["sale_price"]:,}' for p in top_3]) + ')')
+        else:
+            # Not enough products, just take what we have
+            top_3 = profitable_products[:3]
+        
+        log_activity('sourcing', f'Step 4/5: 🎯 Top {len(top_3)} selected (diverse products, rejected excluded)', 'success')
     
     # 📊 STAGE 4: Record final count
     stage_stats['stage4_final'] = len(top_3)
