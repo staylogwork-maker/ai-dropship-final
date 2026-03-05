@@ -124,13 +124,22 @@
                 const response = await fetch('/api/blue-ocean/discover', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    credentials: 'same-origin',  // 🔧 쿠키 포함
+                    credentials: 'include',  // 🔧 FIX: 'same-origin' → 'include'
                     body: JSON.stringify({
                         top_n: 20,
                         min_score: 5.0,
                         use_cache: !forceRefresh
                     })
                 });
+                
+                // 🔧 FIX: Check if response is HTML (not JSON)
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    console.error('Server returned non-JSON response:', contentType);
+                    alert('❌ 인증 오류: 페이지를 새로고침한 후 다시 로그인해주세요.');
+                    window.location.href = '/login';
+                    return;
+                }
                 
                 const result = await response.json();
                 
@@ -142,7 +151,8 @@
                     emptyEl.classList.remove('hidden');
                 }
             } catch (error) {
-                alert('❌ 오류: ' + error.message);
+                console.error('Blue Ocean API error:', error);
+                alert('❌ 오류: ' + error.message + '\n\n페이지를 새로고침한 후 다시 시도해주세요.');
                 emptyEl.classList.remove('hidden');
             } finally {
                 loadingEl.classList.add('hidden');

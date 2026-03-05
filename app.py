@@ -2317,10 +2317,18 @@ def execute_smart_sourcing(keyword):
             app.logger.info(f'[DB Save {idx+1}] Margin: {product["analysis"]["margin"]:.1f}%')
             app.logger.info(f'[DB Save {idx+1}] Profit: ₩{product["analysis"]["profit"]:,}')
             
-            # 🔧 FIX: Store market analysis with Korean keyword (already translated above)
+            # 🔧 FIX: Translate each product's title individually for accurate Naver matching
+            from product_matcher import clean_product_title, translate_english_to_korean
+            cleaned_title = clean_product_title(product['title'])
+            product_korean_keyword = translate_english_to_korean(cleaned_title)
+            
+            app.logger.info(f'[DB Save {idx+1}] Product keyword: {product_korean_keyword}')
+            
+            # Store market analysis with product-specific keyword
             market_analysis_json = json.dumps({
-                'keyword': korean_keyword,  # Use the global Korean keyword for all products
-                'english_keyword': keyword,  # Original English keyword
+                'keyword': product_korean_keyword,  # 🔧 FIX: Use product-specific keyword
+                'english_title': product['title'],
+                'category_keyword': korean_keyword,  # Original Blue Ocean keyword
                 'naver_data': market_data  # Include Naver market data if available
             }, ensure_ascii=False)
             
@@ -2343,8 +2351,8 @@ def execute_smart_sourcing(keyword):
                 product.get('source_site', 'alibaba'),  # 🚀 Source: Alibaba/AliExpress
                 product.get('moq', 1),  # 🚀 NEW: MOQ
                 product.get('sales', 0),  # 🚀 NEW: traffic score (use sales as proxy)
-                korean_keyword,  # 🔧 FIX: Store Korean keyword (common for all products)
-                market_analysis_json  # 🔧 FIX: Store market analysis with keyword
+                product_korean_keyword,  # 🔧 FIX: Store product-specific Korean keyword
+                market_analysis_json  # 🔧 FIX: Store market analysis with product keyword
             ))
             saved_count += 1
             app.logger.info(f'[DB Save {idx+1}] ✅ Successfully inserted')
@@ -4946,7 +4954,6 @@ def analyze_product_market(product_id):
 # ============================================================================
 
 @app.route('/api/blue-ocean/discover', methods=['POST'])
-@login_required
 def discover_blue_ocean():
     """
     Blue Ocean 기회 자동 발견
@@ -4958,6 +4965,14 @@ def discover_blue_ocean():
         "use_cache": true      # 캐시 사용 여부 (기본 true)
     }
     """
+    # 🔧 FIX: Manual authentication check instead of @login_required
+    if not current_user.is_authenticated:
+        app.logger.warning('[Blue Ocean] ⚠️ Unauthenticated access attempt')
+        return jsonify({
+            'success': False,
+            'error': '로그인이 필요합니다.'
+        }), 401
+    
     from blue_ocean_discovery import (
         discover_blue_ocean_opportunities,
         get_cached_opportunities,
