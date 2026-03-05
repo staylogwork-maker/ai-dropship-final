@@ -2266,7 +2266,11 @@ def execute_smart_sourcing(keyword):
         }
     
     # Step 5.5: 📊 Market Analysis (Naver Shopping)
-    app.logger.info(f'[Smart Sniper] 📊 Starting market analysis for keyword: {keyword}')
+    # 🔧 FIX: Translate English keyword to Korean for Naver search
+    from product_matcher import translate_english_to_korean
+    korean_keyword = translate_english_to_korean(keyword)
+    
+    app.logger.info(f'[Smart Sniper] 📊 Starting market analysis for keyword: {keyword} → {korean_keyword}')
     log_activity('sourcing', 'Step 5/5: 📊 Analyzing market prices (Naver Shopping)', 'in_progress')
     
     market_data = None
@@ -2275,7 +2279,8 @@ def execute_smart_sourcing(keyword):
     
     if naver_client_id and naver_client_secret:
         try:
-            market_data = analyze_naver_market(keyword, naver_client_id, naver_client_secret)
+            # Use Korean keyword for Naver search
+            market_data = analyze_naver_market(korean_keyword, naver_client_id, naver_client_secret)
             
             if market_data.get('success'):
                 app.logger.info(f'[Market Analysis] ✅ SUCCESS')
@@ -2312,12 +2317,19 @@ def execute_smart_sourcing(keyword):
             app.logger.info(f'[DB Save {idx+1}] Margin: {product["analysis"]["margin"]:.1f}%')
             app.logger.info(f'[DB Save {idx+1}] Profit: ₩{product["analysis"]["profit"]:,}')
             
+            # 🔧 FIX: Store market analysis with Korean keyword (already translated above)
+            market_analysis_json = json.dumps({
+                'keyword': korean_keyword,  # Use the global Korean keyword for all products
+                'english_keyword': keyword,  # Original English keyword
+                'naver_data': market_data  # Include Naver market data if available
+            }, ensure_ascii=False)
+            
             cursor.execute('''
                 INSERT INTO sourced_products 
                 (original_url, title_cn, price_cny, price_krw, profit_margin, 
                  estimated_profit, safety_status, images_json, status,
-                 source_site, moq, traffic_score)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 source_site, moq, traffic_score, keywords, market_analysis_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 product['url'],
                 product['title'],
@@ -2330,7 +2342,9 @@ def execute_smart_sourcing(keyword):
                 'pending',
                 product.get('source_site', 'alibaba'),  # 🚀 Source: Alibaba/AliExpress
                 product.get('moq', 1),  # 🚀 NEW: MOQ
-                product.get('sales', 0)  # 🚀 NEW: traffic score (use sales as proxy)
+                product.get('sales', 0),  # 🚀 NEW: traffic score (use sales as proxy)
+                korean_keyword,  # 🔧 FIX: Store Korean keyword (common for all products)
+                market_analysis_json  # 🔧 FIX: Store market analysis with keyword
             ))
             saved_count += 1
             app.logger.info(f'[DB Save {idx+1}] ✅ Successfully inserted')
