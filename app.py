@@ -1016,6 +1016,60 @@ def parse_smart_price(price_text):
     prices = [float(n) for n in numbers]
     return min(prices)
 
+def extract_keyword_rule_based(title):
+    """
+    규칙 기반 키워드 추출 (OpenAI 폴백용)
+    
+    Rules:
+    1. 카테고리 매칭 (jewelry → 목걸이, boots → 부츠 등)
+    2. 첫 2-3 단어만 사용
+    3. 브랜드명 제거
+    """
+    title_lower = title.lower()
+    
+    # 카테고리 매핑 (영어 → 한국어)
+    category_map = {
+        'jewelry': '주얼리',
+        'necklace': '목걸이',
+        'bracelet': '팔찌',
+        'ring': '반지',
+        'earring': '귀걸이',
+        'boots': '부츠',
+        'shoes': '신발',
+        'dress': '원피스',
+        'shirt': '셔츠',
+        'pants': '바지',
+        'bag': '가방',
+        'wallet': '지갑',
+        'watch': '시계',
+        'phone case': '폰케이스',
+        'charger': '충전기',
+        'cable': '케이블',
+        'headphone': '헤드폰',
+        'earphone': '이어폰',
+        'speaker': '스피커',
+        'keyboard': '키보드',
+        'mouse': '마우스',
+        'hose': '호스',
+        'cleaner': '청소기',
+        'washer': '세척기',
+        'tube': '튜브',
+        'experiment': '실험 장비',
+        'tool': '공구'
+    }
+    
+    # 카테고리 매칭 시도
+    for eng, kor in category_map.items():
+        if eng in title_lower:
+            app.logger.info(f'[Rule-based] Matched category: {eng} → {kor}')
+            return kor
+    
+    # 매칭 실패 시 첫 3단어만 사용
+    words = title.split()[:3]
+    fallback = ' '.join(words)
+    app.logger.info(f'[Rule-based] No category match, using first 3 words: {fallback}')
+    return fallback
+
 # ============================================================================
 # ALIEXPRESS OFFICIAL API INTEGRATION
 # ============================================================================
@@ -4512,8 +4566,8 @@ def analyze_product_market(product_id):
         openai_api_key = get_config('openai_api_key')
         if openai_api_key:
             try:
-                import openai
-                openai.api_key = openai_api_key
+                from openai import OpenAI
+                client = OpenAI(api_key=openai_api_key)
                 
                 prompt = f"""다음 상품명을 보고 네이버/쿠팡에서 검색할 수 있는 한국어 키워드 2-3개를 추출해주세요.
 브랜드명은 제외하고, 제품 카테고리나 일반명사만 사용해주세요.
@@ -4523,7 +4577,7 @@ def analyze_product_market(product_id):
 응답 형식: 키워드1, 키워드2 (예: 무선 이어폰, 블루투스 헤드셋)
 한국어 키워드만 작성하세요."""
 
-                response = openai.ChatCompletion.create(
+                response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": "You are a Korean e-commerce keyword extraction expert. Extract general product category keywords in Korean."},
@@ -4541,13 +4595,13 @@ def analyze_product_market(product_id):
                 
             except Exception as e:
                 app.logger.warning(f'[Market Analysis] ⚠️ AI extraction failed: {str(e)}')
-                # AI 실패 시 폴백
-                keyword = title_original[:50] if len(title_original) > 50 else title_original
-                app.logger.info(f'[Market Analysis] Using fallback (truncated original): {keyword}')
+                # AI 실패 시 규칙 기반 폴백
+                keyword = extract_keyword_rule_based(title_original)
+                app.logger.info(f'[Market Analysis] Using rule-based fallback: {keyword}')
         else:
-            # OpenAI 키가 없으면 원본 제목 사용
-            keyword = title_original[:50] if len(title_original) > 50 else title_original
-            app.logger.warning(f'[Market Analysis] ⚠️ No OpenAI key, using original title: {keyword}')
+            # OpenAI 키가 없으면 규칙 기반 추출
+            keyword = extract_keyword_rule_based(title_original)
+            app.logger.warning(f'[Market Analysis] ⚠️ No OpenAI key, using rule-based extraction: {keyword}')
     
     if not keyword:
         conn.close()
@@ -4584,7 +4638,10 @@ def analyze_product_market(product_id):
 
 응답: (키워드 1개만)"""
 
-                response = openai.ChatCompletion.create(
+                from openai import OpenAI
+                client = OpenAI(api_key=openai_api_key)
+                
+                response = client.chat.completions.create(
                     model="gpt-4o-mini",
                     messages=[
                         {"role": "system", "content": "Suggest a broader, more general Korean keyword."},
