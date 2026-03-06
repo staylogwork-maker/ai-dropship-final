@@ -27,7 +27,7 @@ def validate_gemini_api_key(api_key: str) -> Tuple[bool, str]:
         import google.generativeai as genai
         
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash')  # ✅ 작동하는 최신 모델
         
         # 간단한 테스트 요청
         response = model.generate_content("Say 'OK' if you can read this")

@@ -50,7 +50,7 @@ def translate_keyword_to_english(korean_keyword: str) -> str:
     if gemini_key:
         try:
             genai.configure(api_key=gemini_key)
-            model = genai.GenerativeModel('gemini-2.0-flash')  # ✅ 최신 안정 버전
+            model = genai.GenerativeModel('gemini-2.5-flash')  # ✅ 작동하는 최신 모델
             
             prompt = f"""Translate this Korean e-commerce keyword to English for AliExpress search.
 Output ONLY the English keyword, nothing else.
@@ -343,7 +343,7 @@ def translate_to_english_ai(korean_keyword):
         try:
             import google.generativeai as genai
             genai.configure(api_key=gemini_key)
-            model = genai.GenerativeModel('gemini-2.0-flash')  # ✅ 안정 버전
+            model = genai.GenerativeModel('gemini-2.5-flash')  # ✅ 작동하는 최신 모델
             response = model.generate_content(prompt)
             result = response.text.strip().lower()
             logger.info(f'[Translation] Gemini: {korean_keyword} → {result}')
