@@ -16,9 +16,13 @@ _validation_cache = {}
 _cache_ttl = 300  # 5 minutes
 
 
-def validate_gemini_api_key(api_key: str) -> Tuple[bool, str]:
+def validate_gemini_api_key(api_key: str, skip_api_call: bool = False) -> Tuple[bool, str]:
     """
-    Gemini API 키 유효성 검사 (캐싱 적용)
+    Gemini API 키 유효성 검사
+    
+    Args:
+        api_key: Gemini API 키
+        skip_api_call: True면 형식만 검증 (기본: False, 실제 호출)
     
     Returns:
         (is_valid, message)
@@ -29,6 +33,10 @@ def validate_gemini_api_key(api_key: str) -> Tuple[bool, str]:
     if not api_key.startswith('AIza'):
         return False, "❌ Gemini API 키는 'AIza'로 시작해야 합니다"
     
+    # 형식만 검증 모드
+    if skip_api_call:
+        return True, "✅ Gemini API 키가 설정되었습니다 (형식 검증만)"
+    
     # 캐시 확인 (5분 내 동일 키는 재검증 안함)
     cache_key = f"gemini_{api_key}"
     if cache_key in _validation_cache:
@@ -37,9 +45,31 @@ def validate_gemini_api_key(api_key: str) -> Tuple[bool, str]:
             logger.info(f"[Gemini Validation] Using cached result (age: {int(time.time() - cached_time)}s)")
             return cached_result
     
-    # 형식만 검증 (실제 API 호출 안함!)
-    # 이유: 불필요한 API 크레딧 소모 방지
-    result = (True, "✅ Gemini API 키가 설정되었습니다")
+    # 실제 API 호출
+    try:
+        import google.generativeai as genai
+        
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        response = model.generate_content("test")
+        
+        if response.text:
+            result = (True, "✅ Gemini API 키가 유효합니다")
+        else:
+            result = (False, "❌ API 응답이 비어있습니다")
+            
+    except Exception as e:
+        error_msg = str(e)
+        
+        if "API_KEY_INVALID" in error_msg:
+            result = (False, "❌ 유효하지 않은 API 키입니다")
+        elif "PERMISSION_DENIED" in error_msg:
+            result = (False, "❌ API가 활성화되지 않았습니다")
+        elif "429" in error_msg or "quota" in error_msg.lower():
+            result = (True, "✅ Gemini API 키 유효 (일시적 할당량 초과)")
+        else:
+            result = (False, f"❌ 검증 실패: {error_msg[:100]}")
     
     # 캐시 저장
     _validation_cache[cache_key] = (time.time(), result)
@@ -47,9 +77,13 @@ def validate_gemini_api_key(api_key: str) -> Tuple[bool, str]:
     return result
 
 
-def validate_openai_api_key(api_key: str) -> Tuple[bool, str]:
+def validate_openai_api_key(api_key: str, skip_api_call: bool = False) -> Tuple[bool, str]:
     """
-    OpenAI API 키 유효성 검사 (캐싱 적용)
+    OpenAI API 키 유효성 검사
+    
+    Args:
+        api_key: OpenAI API 키
+        skip_api_call: True면 형식만 검증 (기본: False, 실제 호출)
     
     Returns:
         (is_valid, message)
@@ -60,17 +94,47 @@ def validate_openai_api_key(api_key: str) -> Tuple[bool, str]:
     if not (api_key.startswith('sk-') or api_key.startswith('sk-proj-')):
         return False, "❌ OpenAI API 키는 'sk-' 또는 'sk-proj-'로 시작해야 합니다"
     
-    # 캐시 확인 (5분 내 동일 키는 재검증 안함)
+    # 형식만 검증 모드
+    if skip_api_call:
+        return True, "✅ OpenAI API 키가 설정되었습니다 (형식 검증만)"
+    
+    # 캐시 확인
     cache_key = f"openai_{api_key}"
     if cache_key in _validation_cache:
         cached_time, cached_result = _validation_cache[cache_key]
         if time.time() - cached_time < _cache_ttl:
-            logger.info(f"[OpenAI Validation] Using cached result (age: {int(time.time() - cached_time)}s)")
+            logger.info(f"[OpenAI Validation] Using cached result")
             return cached_result
     
-    # 형식만 검증 (실제 API 호출 안함!)
-    # 이유: 불필요한 API 크레딧 소모 방지
-    result = (True, "✅ OpenAI API 키가 설정되었습니다")
+    # 실제 API 호출
+    try:
+        import requests
+        
+        response = requests.post(
+            'https://api.openai.com/v1/chat/completions',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'model': 'gpt-4o-mini',
+                'messages': [{'role': 'user', 'content': 'test'}],
+                'max_tokens': 3
+            },
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            result = (True, "✅ OpenAI API 키가 유효합니다")
+        elif response.status_code == 401:
+            result = (False, "❌ 인증 실패 (키 오류)")
+        elif response.status_code == 429:
+            result = (True, "✅ OpenAI API 키 유효 (할당량 초과)")
+        else:
+            result = (False, f"❌ HTTP {response.status_code} 오류")
+            
+    except Exception as e:
+        result = (False, f"❌ 연결 실패: {str(e)[:50]}")
     
     # 캐시 저장
     _validation_cache[cache_key] = (time.time(), result)

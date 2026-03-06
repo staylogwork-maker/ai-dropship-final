@@ -443,9 +443,19 @@
             container.innerHTML = html;
         }
         
-        // 페이지 로드 시 자동 실행
+        // 페이지 로드 시 초기 메시지만 표시 (API 호출 안함)
         document.addEventListener('DOMContentLoaded', function() {
-            refreshApiStatus();
+            const container = document.getElementById('apiStatusContainer');
+            container.innerHTML = `
+                <div class="bg-blue-50 border-2 border-blue-400 rounded-lg p-6 text-center">
+                    <p class="text-blue-800 font-bold mb-2">💡 API 상태 확인</p>
+                    <p class="text-blue-700 text-sm">
+                        "🔄 새로고침" 버튼을 눌러 API 상태를 확인하세요.
+                        <br>
+                        (자동 검증하지 않아 크레딧이 소모되지 않습니다)
+                    </p>
+                </div>
+            `;
         });
         
         async function saveConfig() {
