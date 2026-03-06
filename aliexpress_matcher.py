@@ -137,7 +137,10 @@ English:"""
         '거치대': 'holder',
         '케이블': 'cable',
         '키보드': 'keyboard',
-        '마우스': 'mouse',
+        '마우스 패드': 'mouse pad',  # 🔧 추가: 복합어 우선
+        '마우스패드': 'mousepad',    # 🔧 추가: 붙여쓰기
+        '게이밍 마우스패드': 'gaming mouse pad',  # 🔧 추가
+        # '마우스': 'mouse',  # 🔧 제거: "마우스 패드"를 "mouse"로 오역 방지
         '게이밍': 'gaming',
         '기계식': 'mechanical',
         '웹캠': 'webcam',
@@ -181,6 +184,14 @@ English:"""
         '다용도': 'multi purpose',
     }
     
+    # 🔧 FIX: 복합어 우선 매칭 (긴 키워드부터)
+    # "마우스 패드"를 통째로 매칭한 후, 개별 단어 매칭
+    for ko, en in sorted(translation_map.items(), key=lambda x: -len(x[0])):
+        if ko == korean_keyword:
+            logger.info(f"[Translation-RuleBased] ✅ {korean_keyword} → {en}")
+            return en
+    
+    # 개별 단어 번역
     words = korean_keyword.split()
     english_words = []
     
@@ -190,10 +201,15 @@ English:"""
             english_words.append(translation_map[word])
         else:
             # 부분 매칭
+            matched = False
             for ko, en in translation_map.items():
                 if ko in word:
                     english_words.append(en)
+                    matched = True
                     break
+            # 매칭 안 되면 원문 유지
+            if not matched:
+                english_words.append(word)
     
     english = ' '.join(english_words) if english_words else korean_keyword
     logger.info(f"[Translation-RuleBased] ⚠️ {korean_keyword} → {english}")
