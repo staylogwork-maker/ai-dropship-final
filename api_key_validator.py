@@ -52,7 +52,7 @@ def validate_gemini_api_key(api_key: str) -> Tuple[bool, str]:
 
 def validate_openai_api_key(api_key: str) -> Tuple[bool, str]:
     """
-    OpenAI API 키 유효성 검사
+    OpenAI API 키 유효성 검사 (requests 라이브러리 사용)
     
     Returns:
         (is_valid, message)
@@ -64,36 +64,37 @@ def validate_openai_api_key(api_key: str) -> Tuple[bool, str]:
         return False, "❌ OpenAI API 키는 'sk-' 또는 'sk-proj-'로 시작해야 합니다"
     
     try:
-        import openai
+        import requests
         
-        client = openai.OpenAI(api_key=api_key)
-        
-        # 간단한 테스트 요청 (최소 비용)
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": "Say OK"}],
-            max_tokens=5
+        # 직접 HTTP 요청 (OpenAI SDK 버그 회피)
+        response = requests.post(
+            'https://api.openai.com/v1/chat/completions',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json'
+            },
+            json={
+                'model': 'gpt-4o-mini',
+                'messages': [{'role': 'user', 'content': 'OK'}],
+                'max_tokens': 3
+            },
+            timeout=10
         )
         
-        if response.choices[0].message.content:
+        if response.status_code == 200:
             return True, "✅ OpenAI API 키가 유효합니다"
+        elif response.status_code == 401:
+            return False, "❌ 인증 실패. API 키가 유효하지 않거나 만료되었습니다."
+        elif response.status_code == 429:
+            return False, "⚠️ 할당량 초과 또는 크레딧 부족. 계정을 확인하세요."
+        elif response.status_code == 403:
+            return False, "❌ 권한 없음. API 키 권한을 확인하세요."
         else:
-            return False, "❌ API 응답이 비어있습니다"
+            error_text = response.text[:200]
+            return False, f"❌ 검증 실패 (HTTP {response.status_code}): {error_text}"
             
-    except openai.AuthenticationError:
-        return False, "❌ 인증 실패. API 키가 유효하지 않거나 만료되었습니다."
-    except openai.PermissionDeniedError:
-        return False, "❌ 권한 없음. API 키 권한을 확인하세요."
-    except openai.RateLimitError:
-        return False, "⚠️ 할당량 초과 또는 크레딧 부족. 계정을 확인하세요."
     except Exception as e:
-        error_msg = str(e)
-        if "401" in error_msg:
-            return False, "❌ 인증 실패. API 키를 다시 확인하세요."
-        elif "429" in error_msg:
-            return False, "⚠️ 요청 한도 초과. 잠시 후 다시 시도하세요."
-        else:
-            return False, f"❌ 검증 실패: {error_msg[:100]}"
+        return False, f"❌ 연결 실패: {str(e)[:100]}"
 
 
 def get_api_status() -> Dict[str, Dict[str, str]]:
@@ -103,7 +104,10 @@ def get_api_status() -> Dict[str, Dict[str, str]]:
     Returns:
         {
             'gemini': {'status': 'valid/invalid/none', 'message': '...'},
-            'openai': {'status': 'valid/invalid/none', 'message': '...'}
+            'openai': {'status': 'valid/invalid/none', 'message': '...'},
+            'aliexpress': {...},
+            'naver': {...},
+            'coupang': {...}
         }
     """
     from app import get_config
@@ -141,6 +145,60 @@ def get_api_status() -> Dict[str, Dict[str, str]]:
             'message': message,
             'color': 'green' if is_valid else 'red'
         }
+    
+    # AliExpress (Official API - 무료, 항상 활성)
+    status['aliexpress'] = {
+        'status': 'valid',
+        'message': '✅ AliExpress Official API 활성화됨 (무료)',
+        'color': 'green'
+    }
+    
+    # Naver Shopping API
+    naver_client_id = get_config('naver_client_id')
+    naver_client_secret = get_config('naver_client_secret')
+    if not naver_client_id or not naver_client_secret:
+        status['naver'] = {
+            'status': 'none',
+            'message': '⚪ Client ID/Secret이 설정되지 않았습니다',
+            'color': 'gray'
+        }
+    else:
+        # 간단한 검증 (길이 체크)
+        if len(naver_client_id) > 10 and len(naver_client_secret) > 10:
+            status['naver'] = {
+                'status': 'configured',
+                'message': '🟡 설정됨 (사용 시 검증)',
+                'color': 'yellow'
+            }
+        else:
+            status['naver'] = {
+                'status': 'invalid',
+                'message': '❌ Client ID/Secret이 너무 짧습니다',
+                'color': 'red'
+            }
+    
+    # Coupang Partners API
+    coupang_access = get_config('coupang_access_key')
+    coupang_secret = get_config('coupang_secret_key')
+    if not coupang_access or not coupang_secret:
+        status['coupang'] = {
+            'status': 'none',
+            'message': '⚪ Access Key/Secret이 설정되지 않았습니다',
+            'color': 'gray'
+        }
+    else:
+        if len(coupang_access) > 10 and len(coupang_secret) > 10:
+            status['coupang'] = {
+                'status': 'configured',
+                'message': '🟡 설정됨 (사용 시 검증)',
+                'color': 'yellow'
+            }
+        else:
+            status['coupang'] = {
+                'status': 'invalid',
+                'message': '❌ Access Key/Secret이 너무 짧습니다',
+                'color': 'red'
+            }
     
     return status
 

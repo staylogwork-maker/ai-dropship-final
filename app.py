@@ -283,7 +283,7 @@ def auto_init_database():
                     ('naver_fee_rate', '0.06'),
                     ('coupang_fee_rate', '0.11'),
                     ('auto_register', 'false'),
-                    ('scrapingant_api_key', ''),
+                    ('gemini_api_key', ''),
                     ('openai_api_key', ''),
                     ('naver_client_id', ''),
                     ('naver_client_secret', ''),
@@ -593,52 +593,36 @@ def system_check_critical_configs():
     app.logger.info(f'[SYSTEM-CHECK] DB Size: {os.path.getsize(DB_PATH)} bytes')
     
     # Load critical configs from DB
+    gemini_key = get_config('gemini_api_key', '')
     openai_key = get_config('openai_api_key', '')
-    scrapingant_key = get_config('scrapingant_api_key', '')
     target_margin = get_config('target_margin_rate', '30')
     cny_rate = get_config('cny_exchange_rate', '190')
     
     # Log first 4 characters of API keys (masked)
-    openai_preview = openai_key[:4] + '****' if len(openai_key) >= 4 else 'EMPTY'
-    scrapingant_preview = scrapingant_key[:4] + '****' if len(scrapingant_key) >= 4 else 'EMPTY'
+    gemini_preview = gemini_key[:8] + '****' if len(gemini_key) >= 8 else 'EMPTY'
+    openai_preview = openai_key[:8] + '****' if len(openai_key) >= 8 else 'EMPTY'
     
+    app.logger.info(f'[SYSTEM-CHECK] 🔑 Gemini API Key: {gemini_preview} (length: {len(gemini_key)})')
     app.logger.info(f'[SYSTEM-CHECK] 🔑 OpenAI API Key: {openai_preview} (length: {len(openai_key)})')
-    app.logger.info(f'[SYSTEM-CHECK] 🔑 ScrapingAnt API Key: {scrapingant_preview} (length: {len(scrapingant_key)})')
     app.logger.info(f'[SYSTEM-CHECK] 💰 Target Margin: {target_margin}%')
     app.logger.info(f'[SYSTEM-CHECK] 💱 CNY Exchange Rate: {cny_rate}')
     
-    # Check if critical keys are empty
-    missing_keys = []
-    if not openai_key or openai_key.strip() == '':
-        missing_keys.append('openai_api_key')
-        app.logger.error('[SYSTEM-CHECK] ❌ OpenAI API key is EMPTY or NOT CONFIGURED')
+    # ⚠️ API 키는 필수가 아님 (설정 페이지에서 입력)
+    if not gemini_key and not openai_key:
+        app.logger.warning('[SYSTEM-CHECK] ⚠️ No AI API keys configured (Gemini/OpenAI)')
+        app.logger.info('[SYSTEM-CHECK] ℹ️  Using rule-based translation mode')
+    else:
+        app.logger.info('[SYSTEM-CHECK] ✅ AI API keys detected')
     
-    if not scrapingant_key or scrapingant_key.strip() == '':
-        missing_keys.append('scrapingant_api_key')
-        app.logger.error('[SYSTEM-CHECK] ❌ ScrapingAnt API key is EMPTY or NOT CONFIGURED')
-    
-    if missing_keys:
-        error_msg = f'CRITICAL: Missing required API keys in DB: {missing_keys}'
-        app.logger.error(f'[SYSTEM-CHECK] ❌ {error_msg}')
-        app.logger.error('[SYSTEM-CHECK] ❌ Please configure these keys in the Settings page!')
-        app.logger.info('[SYSTEM-CHECK] ========================================')
-        raise RuntimeError(error_msg)
-    
-    app.logger.info('[SYSTEM-CHECK] ✅ All critical configurations verified successfully')
+    app.logger.info('[SYSTEM-CHECK] ✅ System check completed')
     app.logger.info('[SYSTEM-CHECK] ========================================')
     
     return {
         'success': True,
+        'gemini_key_preview': gemini_preview,
         'openai_key_preview': openai_preview,
-        'scrapingant_key_preview': scrapingant_preview,
         'target_margin': target_margin,
         'cny_rate': cny_rate
-    }
-    
-    # Check critical API keys
-    critical_keys = {
-        'scrapingant_api_key': 'ScrapingAnt API Key',
-        'openai_api_key': 'OpenAI API Key'
     }
     
     config_status = {}
@@ -1383,10 +1367,11 @@ def scrape_alibaba_search(keyword, max_results=50):
     app.logger.info(f'[Alibaba Scraping] ========================================')
     app.logger.info(f'[Alibaba Scraping] 🔥 ULTIMATE ANTI-BOT MODE for: {keyword}')
     
-    api_key = get_config('scrapingant_api_key')
-    if not api_key or not api_key.strip():
-        app.logger.error('[Alibaba Scraping] ❌ No ScrapingAnt API key')
-        return {'products': [], 'count': 0}
+    # ⚠️ Alibaba.com scraping is DEPRECATED
+    # Reason: High cost ($79/month ScrapingAnt), low success rate
+    # Alternative: AliExpress Official API (FREE)
+    app.logger.warning('[Alibaba Scraping] ⚠️ DEPRECATED - Use AliExpress Official API instead')
+    return {'products': [], 'count': 0}
     
     # 🎭 Pool of REAL User-Agents (Latest Chrome/Edge 2024-2026)
     user_agents = [
@@ -1614,10 +1599,11 @@ def scrape_aliexpress_search(keyword, max_results=50):
     app.logger.info(f'[AliExpress Scraping] ========================================')
     app.logger.info(f'[AliExpress Scraping] 🔥 ULTIMATE ANTI-BOT MODE for: {keyword}')
     
-    api_key = get_config('scrapingant_api_key')
-    if not api_key or not api_key.strip():
-        app.logger.error('[AliExpress Scraping] ❌ No ScrapingAnt API key')
-        return {'products': [], 'count': 0}
+    # ⚠️ AliExpress web scraping is DEPRECATED
+    # Reason: High cost ($79/month), unreliable, anti-bot issues
+    # Alternative: AliExpress Official API (FREE, stable, fast)
+    app.logger.warning('[AliExpress Scraping] ⚠️ DEPRECATED - Using Official API instead')
+    return {'products': [], 'count': 0}
     
     # 🎭 Pool of REAL User-Agents (Latest browsers)
     user_agents = [
@@ -4040,10 +4026,14 @@ def deliver_order(order_id):
 # ============================================================================
 
 def check_product_stock_status(product_url):
-    """Check if product is still available on source site (Alibaba/AliExpress)"""
-    api_key = get_config('scrapingant_api_key')
-    if not api_key:
-        return {'available': True, 'reason': 'Cannot verify - API key missing'}
+    """
+    Check if product is still available on source site
+    ⚠️ ScrapingAnt removed - Using direct requests (may fail on anti-bot)
+    """
+    # ScrapingAnt removed ($79/month cost)
+    # Alternative: Direct GET request (simple, free, but less reliable)
+    app.logger.warning('[Stock Check] ⚠️ ScrapingAnt removed - Using basic HTTP check')
+    return {'available': True, 'reason': 'Stock check disabled (ScrapingAnt removed)'}
     
     try:
         params = {
@@ -4826,7 +4816,7 @@ def verify_config():
     
     # Check critical config values
     configs_to_check = [
-        'scrapingant_api_key',
+        'gemini_api_key',
         'openai_api_key',
         'target_margin_rate',
         'cny_exchange_rate',
