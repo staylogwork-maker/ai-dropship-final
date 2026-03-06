@@ -3809,8 +3809,13 @@ def generate_content(product_id):
     app.logger.info(f'[Content Generation] 🚀 Starting WINNING page generation for product {product_id}')
     log_activity('content', f'Generating WINNING content for product {product_id}', 'in_progress')
     
+    # 🔥 FIX: Translate English title to Korean
+    from product_matcher import translate_english_to_korean
+    korean_title = translate_english_to_korean(product['title_cn'])
+    app.logger.info(f'[Content Generation] 🌐 Title: {product["title_cn"]} → {korean_title}')
+    
     # Generate SHORT marketing copy (for summary box)
-    marketing_copy = generate_marketing_copy(product['title_cn'], product['price_krw'])
+    marketing_copy = generate_marketing_copy(korean_title, product['price_krw'])
     
     # Process images with Korean shopping mall styling
     original_images = json.loads(product['images_json']) if product['images_json'] else []
@@ -3824,7 +3829,7 @@ def generate_content(product_id):
     # Generate WINNING PRODUCT PAGE (5-section structure)
     app.logger.info(f'[Content Generation] ✨ Generating WINNING 5-section structure')
     winning_html, seo_tags = generate_winning_product_page(
-        title=product['title_cn'],
+        title=korean_title,  # 🔥 FIX: Use Korean title
         price=product['price_krw'],
         images=processed_images
     )
@@ -3846,7 +3851,7 @@ def generate_content(product_id):
         marketing_copy,
         winning_html,  # Full winning structure in description_kr
         json.dumps(processed_images),
-        product['title_cn'],
+        korean_title,  # 🔥 FIX: Store Korean title
         seo_tags,  # 🔥 FIXED: Store in keywords column, NOT description_cn
         product_id
     ))
