@@ -365,32 +365,42 @@ def clean_product_title(title: str) -> str:
 # ============================================================================
 
 CATEGORY_KEYWORDS = {
-    '자전거': ['bicycle', 'bike', 'cycling', 'mtb', 'bmx'],
-    '차량용품': ['car', 'vehicle', 'automobile', 'automotive'],
-    '오토바이': ['motorcycle', 'motorbike', 'scooter'],
-    '휴대폰액세서리': ['phone', 'mobile', 'cellphone', 'smartphone'],
-    '전자제품': ['electronic', 'digital', 'usb', 'charger', 'cable', 'adapter'],
-    '가전제품': ['appliance', 'air purifier', 'humidifier', 'vacuum', 'cleaner'],
-    '컴퓨터': ['computer', 'laptop', 'keyboard', 'mouse', 'monitor'],
-    '오디오': ['speaker', 'headphone', 'earphone', 'bluetooth', 'audio'],
-    '반려동물': ['pet', 'dog', 'cat', 'animal', 'feeder'],
-    '스포츠': ['sport', 'fitness', 'exercise', 'outdoor'],
-    '가방': ['bag', 'backpack', 'handbag', 'luggage'],
-    '의류': ['clothing', 'shirt', 't-shirt', 'pants', 'jacket'],
-    '신발': ['shoes', 'sneakers', 'boots', 'sandals'],
-    '악세서리': ['jewelry', 'necklace', 'bracelet', 'ring', 'earring'],
-    '주방': ['kitchen', 'cookware', 'utensil', 'tableware'],
-    '욕실': ['bathroom', 'shower', 'toilet', 'towel'],
-    '침구': ['bedding', 'pillow', 'blanket', 'sheet'],
-    '가구': ['furniture', 'chair', 'table', 'desk', 'shelf'],
-    '조명': ['light', 'lamp', 'led', 'bulb'],
-    '공구': ['tool', 'wrench', 'screwdriver', 'hammer'],
+    '자전거': ['bicycle', 'bike', 'cycling', 'mtb', 'bmx', '자전거', '사이클'],
+    '차량용품': ['car', 'vehicle', 'automobile', 'automotive', '차량', '자동차'],
+    '오토바이': ['motorcycle', 'motorbike', 'scooter', '오토바이', '스쿠터'],
+    '휴대폰액세서리': ['phone', 'mobile', 'cellphone', 'smartphone', '휴대폰', '스마트폰', '핸드폰'],
+    '전자제품': ['electronic', 'digital', 'usb', 'charger', 'cable', 'adapter', '전자', '디지털'],
+    '가전제품': ['appliance', 'air purifier', 'humidifier', 'vacuum', 'cleaner', '가전', '청소기'],
+    '컴퓨터': ['computer', 'laptop', 'keyboard', 'mouse', 'monitor', '컴퓨터', '노트북', '키보드', '마우스'],
+    '오디오': ['speaker', 'headphone', 'earphone', 'bluetooth', 'audio', '스피커', '헤드폰', '이어폰', '블루투스'],
+    '반려동물': ['pet', 'dog', 'cat', 'animal', 'feeder', '반려동물', '애완동물', '강아지', '고양이'],
+    '스포츠': ['sport', 'fitness', 'exercise', 'outdoor', '스포츠', '운동', '피트니스'],
+    '가방': ['bag', 'backpack', 'handbag', 'luggage', '가방', '백팩', '배낭'],
+    '의류': ['clothing', 'shirt', 't-shirt', 'pants', 'jacket', '의류', '옷', '셔츠', '바지'],
+    '신발': ['shoes', 'sneakers', 'boots', 'sandals', '신발', '운동화', '부츠', '샌들'],
+    '악세서리': ['jewelry', 'necklace', 'bracelet', 'ring', 'earring', '악세서리', '액세서리', '목걸이', '팔찌'],
+    '주방': ['kitchen', 'cookware', 'utensil', 'tableware', '주방', '조리', '식기'],
+    '욕실': ['bathroom', 'shower', 'toilet', 'towel', '욕실', '화장실', '샤워', '수건'],
+    '침구': ['bedding', 'pillow', 'blanket', 'sheet', '침구', '베개', '이불', '시트'],
+    '바구니/수납': ['basket', 'storage', 'organizer', 'container', 'holder', 'woven', '바구니', '수납', '정리', '보관'],
+    '가구': ['furniture', 'chair', 'table', 'desk', 'shelf', '가구', '의자', '테이블', '책상', '선반'],
+    '조명': ['light', 'lamp', 'led', 'bulb', '조명', '램프', '전등'],
+    '공구': ['tool', 'wrench', 'screwdriver', 'hammer', '공구', '드라이버', '렌치', '망치'],
+}
+
+# 🚫 네이버 검색 결과에서 제외해야 할 카테고리 키워드
+# (예: 과일바구니 검색 시 "과일 선물세트" 제외)
+EXCLUDE_KEYWORDS = {
+    '선물세트': ['선물세트', '선물 세트', '박스세트', '명절선물', '추석선물', '설선물'],
+    '식품': ['사과', '배', '포도', '귤', '오렌지', '바나나', '딸기', '수박', '참외', '멜론', 
+             '망고', '키위', '체리', '블루베리', '복숭아', '자두', '살구', '감', '곶감',
+             '과일세트', '혼합과일', '제철과일', '국산과일'],
 }
 
 
 def classify_category(title: str) -> str:
     """
-    제품명으로 카테고리 자동 분류
+    제품명으로 카테고리 자동 분류 (우선순위 고려)
     
     Args:
         title: 제품명 (영문)
@@ -400,7 +410,26 @@ def classify_category(title: str) -> str:
     """
     title_lower = title.lower()
     
+    # 🎯 우선순위가 높은 키워드부터 체크 (구체적 → 일반적)
+    PRIORITY_CATEGORIES = [
+        '바구니/수납',  # 우선순위 1: basket, woven 등
+        '주방', '욕실', '침구',  # 우선순위 2: 구체적인 생활용품
+        '가구',  # 우선순위 낮음: 일반적인 카테고리
+    ]
+    
+    # 1단계: 우선순위 카테고리부터 체크
+    for category in PRIORITY_CATEGORIES:
+        if category in CATEGORY_KEYWORDS:
+            keywords = CATEGORY_KEYWORDS[category]
+            for keyword in keywords:
+                if keyword in title_lower:
+                    logger.info(f"[Category] {title[:50]}... → {category} (우선순위)")
+                    return category
+    
+    # 2단계: 나머지 카테고리 체크
     for category, keywords in CATEGORY_KEYWORDS.items():
+        if category in PRIORITY_CATEGORIES:
+            continue  # 이미 체크함
         for keyword in keywords:
             if keyword in title_lower:
                 logger.info(f"[Category] {title[:50]}... → {category}")
@@ -425,14 +454,22 @@ def calculate_category_similarity(ali_category: str, naver_title: str) -> float:
     Returns:
         유사도 (0.0 ~ 1.0)
     """
-    # 카테고리 키워드 추출
+    # 🚫 STEP 1: 제외 키워드 체크 (선물세트, 식품 등)
+    naver_lower = naver_title.lower()
+    
+    for exclude_category, exclude_words in EXCLUDE_KEYWORDS.items():
+        for word in exclude_words:
+            if word in naver_title or word in naver_lower:
+                logger.debug(f"[Exclude] '{naver_title[:40]}...' → 제외 키워드 '{word}' 발견")
+                return 0.0  # 즉시 미스매치
+    
+    # STEP 2: 카테고리 키워드 추출
     if ali_category not in CATEGORY_KEYWORDS:
         return 0.5  # 알 수 없으면 중립
     
     category_keywords = CATEGORY_KEYWORDS[ali_category]
-    naver_lower = naver_title.lower()
     
-    # 키워드 매칭 체크
+    # STEP 3: 키워드 매칭 체크
     matched = 0
     for keyword in category_keywords:
         if keyword in naver_lower:
@@ -442,7 +479,7 @@ def calculate_category_similarity(ali_category: str, naver_title: str) -> float:
     if ali_category in naver_title:
         matched += 2
     
-    # 점수 계산
+    # STEP 4: 점수 계산
     if matched >= 2:
         return 1.0  # 완전 매칭
     elif matched == 1:
