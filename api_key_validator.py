@@ -163,17 +163,17 @@ def get_api_status() -> Dict[str, Dict[str, str]]:
             'color': 'gray'
         }
     else:
-        # 간단한 검증 (길이 체크)
-        if len(naver_client_id) > 10 and len(naver_client_secret) > 10:
+        # Naver API 키 길이: Client ID = 20자, Client Secret = 10자
+        if len(naver_client_id) >= 15 and len(naver_client_secret) >= 8:
             status['naver'] = {
-                'status': 'configured',
-                'message': '🟡 설정됨 (사용 시 검증)',
-                'color': 'yellow'
+                'status': 'valid',
+                'message': '✅ 네이버 쇼핑 API 설정됨',
+                'color': 'green'
             }
         else:
             status['naver'] = {
                 'status': 'invalid',
-                'message': '❌ Client ID/Secret이 너무 짧습니다',
+                'message': f'❌ Client ID/Secret 길이 오류 (ID:{len(naver_client_id)}, Secret:{len(naver_client_secret)})',
                 'color': 'red'
             }
     
@@ -187,16 +187,17 @@ def get_api_status() -> Dict[str, Dict[str, str]]:
             'color': 'gray'
         }
     else:
-        if len(coupang_access) > 10 and len(coupang_secret) > 10:
+        # Coupang API 키는 길이가 다양하므로 최소 8자 이상만 체크
+        if len(coupang_access) >= 8 and len(coupang_secret) >= 8:
             status['coupang'] = {
-                'status': 'configured',
-                'message': '🟡 설정됨 (사용 시 검증)',
-                'color': 'yellow'
+                'status': 'valid',
+                'message': '✅ 쿠팡 파트너스 API 설정됨',
+                'color': 'green'
             }
         else:
             status['coupang'] = {
                 'status': 'invalid',
-                'message': '❌ Access Key/Secret이 너무 짧습니다',
+                'message': f'❌ Access Key/Secret 길이 오류 (Access:{len(coupang_access)}, Secret:{len(coupang_secret)})',
                 'color': 'red'
             }
     
