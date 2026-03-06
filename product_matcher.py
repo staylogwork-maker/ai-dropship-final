@@ -112,6 +112,21 @@ Korean:"""
     # 3단계: 규칙 기반 매핑 (100% 폴백)
     translation_map = {
         # 🔧 복합어 우선 매칭 (긴 것부터!)
+        # 원예/정원 (NEW)
+        'automatic drip irrigation system': '자동 점적 관수 시스템',
+        'drip irrigation system': '점적 관수 시스템',
+        'drip irrigation': '점적 관수',
+        'irrigation system': '관수 시스템',
+        'watering device': '물주기 장치',
+        'self watering': '자동 물주기',
+        
+        # 의약품/파우치 (NEW)
+        'pill pouch bag': '약 파우치',
+        'pill organizer': '약 정리함',
+        'pill pouch': '약 파우치',
+        'medicine organizer': '약통 정리함',
+        'medication organizer': '약 정리함',
+        
         # 실리콘 제품 (긴 복합어가 먼저 매칭됨)
         'silicone cooking utensil': '실리콘 조리도구',
         'silicone kitchenware': '실리콘 주방용품',
