@@ -115,6 +115,26 @@
                 </div>
             </div>
             
+            <!-- API Status Widget -->
+            <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-2xl font-bold text-gray-800">💚 API 상태</h2>
+                    <button 
+                        onclick="refreshApiStatus()" 
+                        class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition"
+                    >
+                        🔄 새로고침
+                    </button>
+                </div>
+                
+                <div id="apiStatusContainer">
+                    <div class="text-center py-8">
+                        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                        <p class="mt-2 text-gray-600">API 상태 확인 중...</p>
+                    </div>
+                </div>
+            </div>
+            
             <!-- API Configuration -->
             <div class="bg-white rounded-lg shadow-lg p-6">
                 <h2 class="text-2xl font-bold text-gray-800 mb-4">🔑 API 설정</h2>
@@ -298,6 +318,107 @@
     </div>
     
     <script>
+        // API 상태 새로고침
+        function refreshApiStatus() {
+            const container = document.getElementById('apiStatusContainer');
+            
+            container.innerHTML = `
+                <div class="text-center py-8">
+                    <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+                    <span class="ml-2 text-gray-600">확인 중...</span>
+                </div>
+            `;
+            
+            fetch('/api/config/api-status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        displayApiStatus(data.status);
+                    } else {
+                        container.innerHTML = `
+                            <div class="bg-red-50 border-2 border-red-400 rounded-lg p-4">
+                                <p class="text-red-800">❌ 상태 확인 실패: ${data.error}</p>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    container.innerHTML = `
+                        <div class="bg-red-50 border-2 border-red-400 rounded-lg p-4">
+                            <p class="text-red-800">❌ 네트워크 오류: ${error.message}</p>
+                        </div>
+                    `;
+                });
+        }
+        
+        function displayApiStatus(status) {
+            const container = document.getElementById('apiStatusContainer');
+            
+            const gemini = status.gemini || {};
+            const openai = status.openai || {};
+            
+            const getStatusBadge = (st) => {
+                if (st === 'valid') return '<span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-bold">✅ 정상</span>';
+                if (st === 'invalid') return '<span class="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-bold">❌ 오류</span>';
+                return '<span class="px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-sm font-bold">⚪ 미설정</span>';
+            };
+            
+            const getStatusColor = (st) => {
+                if (st === 'valid') return 'border-green-400 bg-green-50';
+                if (st === 'invalid') return 'border-red-400 bg-red-50';
+                return 'border-gray-300 bg-gray-50';
+            };
+            
+            let html = '<div class="space-y-3">';
+            
+            // Gemini
+            html += `
+                <div class="border-2 ${getStatusColor(gemini.status)} rounded-lg p-4">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <h3 class="font-bold text-gray-800 mb-1">🤖 Gemini API</h3>
+                            <p class="text-sm text-gray-700">${gemini.message || '상태 알 수 없음'}</p>
+                        </div>
+                        ${getStatusBadge(gemini.status)}
+                    </div>
+                </div>
+            `;
+            
+            // OpenAI
+            html += `
+                <div class="border-2 ${getStatusColor(openai.status)} rounded-lg p-4">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1">
+                            <h3 class="font-bold text-gray-800 mb-1">🧠 OpenAI API</h3>
+                            <p class="text-sm text-gray-700">${openai.message || '상태 알 수 없음'}</p>
+                        </div>
+                        ${getStatusBadge(openai.status)}
+                    </div>
+                </div>
+            `;
+            
+            html += '</div>';
+            
+            // 경고 메시지
+            if (gemini.status !== 'valid' && openai.status !== 'valid') {
+                html += `
+                    <div class="bg-yellow-50 border-2 border-yellow-400 rounded-lg p-4 mt-4">
+                        <p class="text-yellow-800 font-bold">⚠️ 주의</p>
+                        <p class="text-yellow-700 text-sm mt-1">
+                            유효한 API 키가 없습니다. AI 번역이 작동하지 않으며, 규칙 기반 번역만 사용됩니다.
+                        </p>
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html;
+        }
+        
+        // 페이지 로드 시 자동 실행
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshApiStatus();
+        });
+        
         async function saveConfig() {
             const configData = {
                 target_margin_rate: document.getElementById('target_margin_rate').value,
