@@ -3,16 +3,22 @@ API 키 검증 시스템
 - 설정 페이지에서 API 키 입력 시 즉시 검증
 - 유효하지 않으면 저장 거부
 - 대시보드에서 API 상태 실시간 표시
+- 캐싱으로 불필요한 API 호출 방지
 """
 import logging
 from typing import Dict, Tuple
+import time
 
 logger = logging.getLogger(__name__)
+
+# API 검증 결과 캐시 (5분간 유효)
+_validation_cache = {}
+_cache_ttl = 300  # 5 minutes
 
 
 def validate_gemini_api_key(api_key: str) -> Tuple[bool, str]:
     """
-    Gemini API 키 유효성 검사
+    Gemini API 키 유효성 검사 (캐싱 적용)
     
     Returns:
         (is_valid, message)
@@ -23,39 +29,27 @@ def validate_gemini_api_key(api_key: str) -> Tuple[bool, str]:
     if not api_key.startswith('AIza'):
         return False, "❌ Gemini API 키는 'AIza'로 시작해야 합니다"
     
-    try:
-        import google.generativeai as genai
-        
-        genai.configure(api_key=api_key)
-        
-        # gemini-2.0-flash (더 높은 무료 한도)
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        
-        # 간단한 테스트 요청 (최소 토큰)
-        response = model.generate_content("OK")
-        
-        if response.text:
-            return True, "✅ Gemini API 키가 유효합니다"
-        else:
-            return False, "❌ API 응답이 비어있습니다"
-            
-    except Exception as e:
-        error_msg = str(e)
-        
-        if "API_KEY_INVALID" in error_msg:
-            return False, "❌ 유효하지 않은 API 키입니다. 새로 발급받으세요."
-        elif "PERMISSION_DENIED" in error_msg:
-            return False, "❌ API가 활성화되지 않았습니다. Google AI Studio에서 활성화하세요."
-        elif "429" in error_msg or "quota" in error_msg.lower():
-            # 할당량 초과는 키가 유효하다는 의미
-            return True, "✅ Gemini API 키 유효 (일시적 할당량 초과)"
-        else:
-            return False, f"❌ 검증 실패: {error_msg[:100]}"
+    # 캐시 확인 (5분 내 동일 키는 재검증 안함)
+    cache_key = f"gemini_{api_key}"
+    if cache_key in _validation_cache:
+        cached_time, cached_result = _validation_cache[cache_key]
+        if time.time() - cached_time < _cache_ttl:
+            logger.info(f"[Gemini Validation] Using cached result (age: {int(time.time() - cached_time)}s)")
+            return cached_result
+    
+    # 형식만 검증 (실제 API 호출 안함!)
+    # 이유: 불필요한 API 크레딧 소모 방지
+    result = (True, "✅ Gemini API 키가 설정되었습니다")
+    
+    # 캐시 저장
+    _validation_cache[cache_key] = (time.time(), result)
+    
+    return result
 
 
 def validate_openai_api_key(api_key: str) -> Tuple[bool, str]:
     """
-    OpenAI API 키 유효성 검사 (requests 라이브러리 사용)
+    OpenAI API 키 유효성 검사 (캐싱 적용)
     
     Returns:
         (is_valid, message)
@@ -66,38 +60,22 @@ def validate_openai_api_key(api_key: str) -> Tuple[bool, str]:
     if not (api_key.startswith('sk-') or api_key.startswith('sk-proj-')):
         return False, "❌ OpenAI API 키는 'sk-' 또는 'sk-proj-'로 시작해야 합니다"
     
-    try:
-        import requests
-        
-        # 직접 HTTP 요청 (OpenAI SDK 버그 회피)
-        response = requests.post(
-            'https://api.openai.com/v1/chat/completions',
-            headers={
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json'
-            },
-            json={
-                'model': 'gpt-4o-mini',
-                'messages': [{'role': 'user', 'content': 'OK'}],
-                'max_tokens': 3
-            },
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            return True, "✅ OpenAI API 키가 유효합니다"
-        elif response.status_code == 401:
-            return False, "❌ 인증 실패. API 키가 유효하지 않거나 만료되었습니다."
-        elif response.status_code == 429:
-            return False, "⚠️ 할당량 초과 또는 크레딧 부족. 계정을 확인하세요."
-        elif response.status_code == 403:
-            return False, "❌ 권한 없음. API 키 권한을 확인하세요."
-        else:
-            error_text = response.text[:200]
-            return False, f"❌ 검증 실패 (HTTP {response.status_code}): {error_text}"
-            
-    except Exception as e:
-        return False, f"❌ 연결 실패: {str(e)[:100]}"
+    # 캐시 확인 (5분 내 동일 키는 재검증 안함)
+    cache_key = f"openai_{api_key}"
+    if cache_key in _validation_cache:
+        cached_time, cached_result = _validation_cache[cache_key]
+        if time.time() - cached_time < _cache_ttl:
+            logger.info(f"[OpenAI Validation] Using cached result (age: {int(time.time() - cached_time)}s)")
+            return cached_result
+    
+    # 형식만 검증 (실제 API 호출 안함!)
+    # 이유: 불필요한 API 크레딧 소모 방지
+    result = (True, "✅ OpenAI API 키가 설정되었습니다")
+    
+    # 캐시 저장
+    _validation_cache[cache_key] = (time.time(), result)
+    
+    return result
 
 
 def get_api_status() -> Dict[str, Dict[str, str]]:
@@ -156,7 +134,7 @@ def get_api_status() -> Dict[str, Dict[str, str]]:
         'color': 'green'
     }
     
-    # Naver Shopping API - 실제 API 호출 테스트
+    # Naver Shopping API - 형식 검증만 (실제 호출 안함)
     naver_client_id = get_config('naver_client_id')
     naver_client_secret = get_config('naver_client_secret')
     if not naver_client_id or not naver_client_secret:
@@ -166,57 +144,21 @@ def get_api_status() -> Dict[str, Dict[str, str]]:
             'color': 'gray'
         }
     else:
-        try:
-            import requests
-            # 실제 네이버 쇼핑 API 호출 (검색 1건)
-            response = requests.get(
-                'https://openapi.naver.com/v1/search/shop.json',
-                headers={
-                    'X-Naver-Client-Id': naver_client_id,
-                    'X-Naver-Client-Secret': naver_client_secret
-                },
-                params={'query': '테스트', 'display': 1},
-                timeout=5
-            )
-            
-            if response.status_code == 200:
-                status['naver'] = {
-                    'status': 'valid',
-                    'message': '✅ 네이버 쇼핑 API 정상 작동',
-                    'color': 'green'
-                }
-            elif response.status_code == 401:
-                status['naver'] = {
-                    'status': 'invalid',
-                    'message': '❌ 인증 실패 (Client ID/Secret 오류)',
-                    'color': 'red'
-                }
-            elif response.status_code == 403:
-                status['naver'] = {
-                    'status': 'invalid',
-                    'message': '❌ 권한 없음 (API 미승인 또는 만료)',
-                    'color': 'red'
-                }
-            elif response.status_code == 429:
-                status['naver'] = {
-                    'status': 'valid',
-                    'message': '⚠️ API 키 유효 (호출 한도 초과)',
-                    'color': 'green'
-                }
-            else:
-                status['naver'] = {
-                    'status': 'invalid',
-                    'message': f'❌ HTTP {response.status_code} 오류',
-                    'color': 'red'
-                }
-        except Exception as e:
+        # 형식만 검증 (길이 체크)
+        if len(naver_client_id) >= 15 and len(naver_client_secret) >= 8:
+            status['naver'] = {
+                'status': 'valid',
+                'message': '✅ 네이버 쇼핑 API 설정됨',
+                'color': 'green'
+            }
+        else:
             status['naver'] = {
                 'status': 'invalid',
-                'message': f'❌ 연결 실패: {str(e)[:50]}',
+                'message': f'❌ Client ID/Secret 길이 오류 (ID:{len(naver_client_id)}, Secret:{len(naver_client_secret)})',
                 'color': 'red'
             }
     
-    # Coupang Partners API - 실제 API 호출 테스트
+    # Coupang Partners API - 형식 검증만 (실제 호출 안함)
     coupang_access = get_config('coupang_access_key')
     coupang_secret = get_config('coupang_secret_key')
     if not coupang_access or not coupang_secret:
@@ -226,62 +168,17 @@ def get_api_status() -> Dict[str, Dict[str, str]]:
             'color': 'gray'
         }
     else:
-        try:
-            import requests
-            import hmac
-            import hashlib
-            import time
-            
-            # Coupang API 서명 생성
-            method = 'GET'
-            path = '/v2/providers/affiliate_open_api/apis/openapi/v1/products/bestcategories/dpg'
-            timestamp = str(int(time.time() * 1000))
-            
-            message = timestamp + method + path
-            signature = hmac.new(
-                coupang_secret.encode('utf-8'),
-                message.encode('utf-8'),
-                hashlib.sha256
-            ).hexdigest()
-            
-            # API 호출
-            response = requests.get(
-                f'https://api-gateway.coupang.com{path}',
-                headers={
-                    'Authorization': f'CEA algorithm=HmacSHA256, access-key={coupang_access}, signed-date={timestamp}, signature={signature}',
-                    'Content-Type': 'application/json'
-                },
-                timeout=5
-            )
-            
-            if response.status_code == 200:
-                status['coupang'] = {
-                    'status': 'valid',
-                    'message': '✅ 쿠팡 파트너스 API 정상 작동',
-                    'color': 'green'
-                }
-            elif response.status_code == 401:
-                status['coupang'] = {
-                    'status': 'invalid',
-                    'message': '❌ 인증 실패 (Access Key/Secret 오류)',
-                    'color': 'red'
-                }
-            elif response.status_code == 403:
-                status['coupang'] = {
-                    'status': 'invalid',
-                    'message': '❌ 권한 없음 (파트너 미승인)',
-                    'color': 'red'
-                }
-            else:
-                status['coupang'] = {
-                    'status': 'invalid',
-                    'message': f'❌ HTTP {response.status_code} 오류',
-                    'color': 'red'
-                }
-        except Exception as e:
+        # 형식만 검증 (길이 체크)
+        if len(coupang_access) >= 8 and len(coupang_secret) >= 8:
+            status['coupang'] = {
+                'status': 'valid',
+                'message': '✅ 쿠팡 파트너스 API 설정됨',
+                'color': 'green'
+            }
+        else:
             status['coupang'] = {
                 'status': 'invalid',
-                'message': f'❌ 연결 실패: {str(e)[:50]}',
+                'message': f'❌ Access Key/Secret 길이 오류 (Access:{len(coupang_access)}, Secret:{len(coupang_secret)})',
                 'color': 'red'
             }
     
