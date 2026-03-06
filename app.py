@@ -1912,18 +1912,86 @@ def search_integrated_hybrid(keyword, max_results=50):
             product['analysis'] = analysis
             product['price_cny'] = price_cny  # Store for DB
             
-            # Calculate score: lower price + higher margin + lower MOQ = better
-            price_score = max(0, 100 - product['price'])  # Lower price = higher score
-            margin_score = analysis['margin']  # Higher margin = higher score
-            moq_score = max(0, 10 - product['moq'])  # Lower MOQ = higher score
+            # 🎯 IMPROVED SCORING: Multi-factor analysis for truly sellable products
             
-            product['hybrid_score'] = price_score + (margin_score * 2) + (moq_score * 3)
+            # 1️⃣ Profit Score (30 points): Absolute profit matters more than margin %
+            absolute_profit = analysis['profit']
+            if absolute_profit >= 15000:  # Excellent profit
+                profit_score = 30
+            elif absolute_profit >= 10000:  # Good profit
+                profit_score = 25
+            elif absolute_profit >= 7000:  # Acceptable profit
+                profit_score = 20
+            elif absolute_profit >= 5000:  # Minimum viable
+                profit_score = 15
+            else:  # Too low
+                profit_score = 5
+            
+            # 2️⃣ Price Score (25 points): Sweet spot 10k-50k KRW (best conversion)
+            sale_price_krw = analysis['sale_price']
+            if 10000 <= sale_price_krw <= 50000:  # Sweet spot
+                price_score = 25
+            elif 50000 < sale_price_krw <= 80000:  # Still good
+                price_score = 20
+            elif 5000 <= sale_price_krw < 10000:  # Too cheap (low trust)
+                price_score = 15
+            elif 80000 < sale_price_krw <= 150000:  # Getting expensive
+                price_score = 10
+            else:  # Too cheap (<5k) or too expensive (>150k)
+                price_score = 5
+            
+            # 3️⃣ MOQ Score (20 points): Lower MOQ = less risk
+            moq = product['moq']
+            if moq == 1:  # Perfect
+                moq_score = 20
+            elif moq <= 5:  # Good
+                moq_score = 15
+            elif moq <= 10:  # Acceptable
+                moq_score = 10
+            elif moq <= 20:  # Marginal
+                moq_score = 5
+            else:  # Too high risk
+                moq_score = 0
+            
+            # 4️⃣ Margin Score (15 points): Healthy margin but not the only factor
+            margin_pct = analysis['margin']
+            if margin_pct >= 40:  # Excellent
+                margin_score = 15
+            elif margin_pct >= 30:  # Good
+                margin_score = 12
+            elif margin_pct >= 25:  # Acceptable
+                margin_score = 8
+            else:  # Too thin
+                margin_score = 3
+            
+            # 5️⃣ Image Quality Score (10 points): More images = better listing
+            image_count = len(product.get('images', []))
+            if image_count >= 6:  # Excellent
+                image_score = 10
+            elif image_count >= 4:  # Good
+                image_score = 7
+            elif image_count >= 2:  # Acceptable
+                image_score = 4
+            else:  # Poor
+                image_score = 1
+            
+            # ✅ Final Hybrid Score (max 100 points)
+            product['hybrid_score'] = profit_score + price_score + moq_score + margin_score + image_score
+            
+            # Store breakdown for debugging
+            product['score_breakdown'] = {
+                'profit': profit_score,
+                'price': price_score,
+                'moq': moq_score,
+                'margin': margin_score,
+                'images': image_score,
+                'total': product['hybrid_score']
+            }
             
             app.logger.debug(f'[Product Score] {product["title"][:30]}: '
-                           f'Price=${product["price"]:.2f}, '
-                           f'Margin={analysis["margin"]:.1f}%, '
-                           f'MOQ={product["moq"]}, '
-                           f'Score={product["hybrid_score"]:.1f}')
+                           f'Total={product["hybrid_score"]:.0f} '
+                           f'(P:{profit_score}+Pr:{price_score}+M:{moq_score}+Mg:{margin_score}+I:{image_score}) | '
+                           f'Profit=₩{absolute_profit:,}, Price=₩{sale_price_krw:,}, MOQ={moq}')
         except Exception as e:
             app.logger.error(f'[Search Engine] Failed to analyze product: {str(e)}')
             product['hybrid_score'] = 0
