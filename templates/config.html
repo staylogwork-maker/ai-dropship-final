@@ -448,11 +448,12 @@
             const container = document.getElementById('apiStatusContainer');
             container.innerHTML = `
                 <div class="bg-blue-50 border-2 border-blue-400 rounded-lg p-6 text-center">
-                    <p class="text-blue-800 font-bold mb-2">💡 API 상태 확인</p>
+                    <p class="text-blue-800 font-bold mb-2">💡 API 상태 확인 방법</p>
                     <p class="text-blue-700 text-sm">
-                        "🔄 새로고침" 버튼을 눌러 API 상태를 확인하세요.
-                        <br>
-                        (자동 검증하지 않아 크레딧이 소모되지 않습니다)
+                        1️⃣ API 키를 입력하고 <strong>"설정 저장"</strong> 버튼 클릭<br>
+                        2️⃣ 자동으로 API 상태가 검증됩니다<br>
+                        3️⃣ 또는 <strong>"🔄 새로고침"</strong> 버튼으로 재확인<br>
+                        <span class="text-gray-600">(페이지 로드 시에는 자동 검증하지 않아 크레딧을 절약합니다)</span>
                     </p>
                 </div>
             `;
@@ -489,8 +490,10 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    alert('✅ 설정이 저장되었습니다!');
-                    location.reload();
+                    alert('✅ 설정이 저장되었습니다! API 상태를 확인합니다...');
+                    
+                    // 저장 후 즉시 API 상태 검증
+                    refreshApiStatus();
                 } else {
                     alert('❌ 저장 실패: ' + (result.error || '알 수 없는 오류'));
                 }
