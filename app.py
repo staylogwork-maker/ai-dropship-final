@@ -839,26 +839,66 @@ def analyze_blue_ocean_market(user_keyword=''):
 
 **중요: 반드시 아래 JSON 형식으로만 답변하세요. 다른 텍스트는 포함하지 마세요:**
 
+🎯 **3개의 서로 다른 카테고리**에서 각각 1개씩 블루오션 키워드를 추천하세요!
+- 반드시 **다른 카테고리**여야 함 (예: 주방용품, 리빙/홈데코, 패션잡화)
+- 각 키워드는 서로 **완전히 다른 상품**이어야 함
+
 {{
-  "keyword": "정밀한 블루오션 키워드 (한국어)",
-  "reasoning": "이 키워드를 선정한 이유를 1~2문장으로 설명",
-  "trend_score": 1-10 사이 점수,
-  "competition_score": 1-10 사이 점수 (낮을수록 좋음),
-  "category": "해당 카테고리명 (예: 리빙/홈데코)"
+  "keywords": [
+    {{
+      "keyword": "첫 번째 블루오션 키워드 (한국어)",
+      "reasoning": "이 키워드를 선정한 이유를 1~2문장으로 설명",
+      "trend_score": 1-10 사이 점수,
+      "competition_score": 1-10 사이 점수 (낮을수록 좋음),
+      "category": "해당 카테고리명"
+    }},
+    {{
+      "keyword": "두 번째 블루오션 키워드 (한국어, 첫 번째와 다른 카테고리)",
+      "reasoning": "이 키워드를 선정한 이유를 1~2문장으로 설명",
+      "trend_score": 1-10 사이 점수,
+      "competition_score": 1-10 사이 점수 (낮을수록 좋음),
+      "category": "해당 카테고리명"
+    }},
+    {{
+      "keyword": "세 번째 블루오션 키워드 (한국어, 위 두 개와 다른 카테고리)",
+      "reasoning": "이 키워드를 선정한 이유를 1~2문장으로 설명",
+      "trend_score": 1-10 사이 점수,
+      "competition_score": 1-10 사이 점수 (낮을수록 좋음),
+      "category": "해당 카테고리명"
+    }}
+  ]
 }}
 
 예시:
 {{
-  "keyword": "반려동물 자동 급수기 스텐 식기",
-  "reasoning": "1인 가구 증가로 펫테크 수요 급증, KC인증 불필요, 대기업 미진입 영역",
-  "trend_score": 9,
-  "competition_score": 3,
-  "category": "반려동물용품"
+  "keywords": [
+    {{
+      "keyword": "반려동물 자동 급수기 스텐 식기",
+      "reasoning": "1인 가구 증가로 펫테크 수요 급증, KC인증 불필요, 대기업 미진입 영역",
+      "trend_score": 9,
+      "competition_score": 3,
+      "category": "반려동물용품"
+    }},
+    {{
+      "keyword": "캠핑용 폴딩 우드 롤 테이블",
+      "reasoning": "봄 캠핑 시즌 진입, 감성 캠핑 트렌드 지속, 가볍고 휴대성 좋은 제품 수요 증가",
+      "trend_score": 8,
+      "competition_score": 4,
+      "category": "스포츠/레저"
+    }},
+    {{
+      "keyword": "마그네틱 주방 수납 선반",
+      "reasoning": "원룸 소형 주방 증가, 공간 활용 솔루션 인기, 설치 간편한 자석 부착형 선호",
+      "trend_score": 7,
+      "competition_score": 3,
+      "category": "주방용품"
+    }}
+  ]
 }}"""
 
     try:
         # Log request details
-        app.logger.info(f'📡 Calling OpenAI API: model=gpt-4o-mini, max_tokens=500, temperature=0.8')
+        app.logger.info(f'📡 Calling OpenAI API: model=gpt-4o-mini, max_tokens=1000, temperature=0.8')
         
         response = requests.post(
             'https://api.openai.com/v1/chat/completions',
@@ -871,7 +911,7 @@ def analyze_blue_ocean_market(user_keyword=''):
                 'messages': [
                     {
                         'role': 'system',
-                        'content': '당신은 한국 E-커머스 시장의 전문 MD이자 트렌드 분석가입니다. 블루오션 시장을 발굴하는 전문가입니다. 반드시 JSON 형식으로만 응답하세요. 중요: KC인증, 전파인증 등 규제가 필요한 전자제품, 의료기기, 식품은 절대 추천하지 마세요.'
+                        'content': '당신은 한국 E-커머스 시장의 전문 MD이자 트렌드 분석가입니다. 블루오션 시장을 발굴하는 전문가입니다. 반드시 JSON 형식으로만 응답하세요. 중요: KC인증, 전파인증 등 규제가 필요한 전자제품, 의료기기, 식품은 절대 추천하지 마세요. 반드시 3개의 서로 다른 카테고리 키워드를 추천하세요.'
                     },
                     {
                         'role': 'user',
@@ -879,7 +919,7 @@ def analyze_blue_ocean_market(user_keyword=''):
                     }
                 ],
                 'temperature': 0.8,
-                'max_tokens': 500,
+                'max_tokens': 1000,
                 'response_format': {'type': 'json_object'}  # JSON mode enabled
             },
             timeout=30
@@ -898,22 +938,41 @@ def analyze_blue_ocean_market(user_keyword=''):
             import json
             try:
                 analysis = json.loads(content)
-                app.logger.info(f'🎯 Blue Ocean Keyword: {analysis.get("keyword")}')
                 
-                return {
-                    'suggested_keyword': analysis.get('keyword', user_keyword or '무선이어폰'),
-                    'reasoning': analysis.get('reasoning', 'AI 분석 완료'),
-                    'trend_score': analysis.get('trend_score', 0),
-                    'competition_score': analysis.get('competition_score', 0),
-                    'analysis_performed': True
-                }
+                # ✅ NEW: Support multiple keywords (array format)
+                if 'keywords' in analysis and isinstance(analysis['keywords'], list):
+                    keywords_list = analysis['keywords']
+                    app.logger.info(f'🎯 Blue Ocean Keywords: {len(keywords_list)} diverse keywords received')
+                    for i, kw in enumerate(keywords_list, 1):
+                        app.logger.info(f'  {i}. {kw.get("keyword")} ({kw.get("category")})')
+                    
+                    return {
+                        'keywords': keywords_list,  # Array of keyword objects
+                        'analysis_performed': True,
+                        'multi_keyword_mode': True
+                    }
+                
+                # ⚠️ FALLBACK: Old single-keyword format (backward compatibility)
+                else:
+                    app.logger.warning(f'⚠️ Single keyword format detected (old API response)')
+                    app.logger.info(f'🎯 Blue Ocean Keyword: {analysis.get("keyword")}')
+                    
+                    return {
+                        'suggested_keyword': analysis.get('keyword', user_keyword or '무선이어폰'),
+                        'reasoning': analysis.get('reasoning', 'AI 분석 완료'),
+                        'trend_score': analysis.get('trend_score', 0),
+                        'competition_score': analysis.get('competition_score', 0),
+                        'analysis_performed': True,
+                        'multi_keyword_mode': False
+                    }
             except json.JSONDecodeError as je:
                 app.logger.error(f'❌ JSON parsing failed: {je}')
                 app.logger.error(f'Raw content: {content[:200]}...')
                 return {
                     'suggested_keyword': user_keyword if user_keyword else '무선이어폰',
                     'reasoning': f'AI 응답 파싱 실패: {str(je)}',
-                    'analysis_performed': False
+                    'analysis_performed': False,
+                    'multi_keyword_mode': False
                 }
         else:
             # Enhanced error logging for non-200 responses
@@ -2522,36 +2581,97 @@ def start_sourcing():
     
     # Determine target keyword based on mode
     if mode == 'ai_discovery':
-        # Case B: AI Blue Ocean Discovery
+        # Case B: AI Blue Ocean Discovery - NEW: Multi-keyword support
         log_activity('sourcing', 'Step 0: 🌊 Blue Ocean Market Analysis', 'in_progress')
         
         blue_ocean_result = analyze_blue_ocean_market(user_keyword)
-        target_keyword = blue_ocean_result['suggested_keyword']
-        reasoning = blue_ocean_result['reasoning']
         
-        app.logger.info(f'Blue Ocean Keyword: {target_keyword}')
-        app.logger.info(f'Reasoning: {reasoning}')
-        
-        log_activity('sourcing', 
-                    f'🎯 Blue Ocean Keyword: "{target_keyword}"', 
-                    'success',
-                    {'reasoning': reasoning, 'original': user_keyword})
-        
-        blue_ocean_data = {
-            'original_keyword': user_keyword,
-            'suggested_keyword': target_keyword,
-            'reasoning': reasoning,
-            'trend_score': blue_ocean_result.get('trend_score', 0),
-            'competition_score': blue_ocean_result.get('competition_score', 0)
-        }
+        # ✅ NEW: Check if multi-keyword mode (3 diverse keywords)
+        if blue_ocean_result.get('multi_keyword_mode'):
+            keywords_list = blue_ocean_result.get('keywords', [])
+            app.logger.info(f'🎯 Multi-keyword mode: {len(keywords_list)} diverse keywords')
+            
+            # Execute sourcing for each keyword (limit 1 product per keyword)
+            all_products = []
+            all_stats = []
+            
+            for idx, kw_obj in enumerate(keywords_list, 1):
+                kw = kw_obj['keyword']
+                category = kw_obj.get('category', '알 수 없음')
+                
+                app.logger.info(f'[Keyword {idx}/3] 🔍 Sourcing: "{kw}" ({category})')
+                log_activity('sourcing', f'[{idx}/3] 🔍 Sourcing: "{kw}" ({category})', 'in_progress')
+                
+                # Execute Smart Sniper for this keyword
+                result = execute_smart_sourcing(kw)
+                
+                if result['success'] and result['stats']['final_count'] > 0:
+                    # Take only 1 product (best one) from this keyword
+                    all_products.extend(result['products'][:1])
+                    all_stats.append({
+                        'keyword': kw,
+                        'category': category,
+                        'stats': result['stats']
+                    })
+                    app.logger.info(f'[Keyword {idx}/3] ✅ Found {result["stats"]["final_count"]} products, selected 1')
+                else:
+                    app.logger.warning(f'[Keyword {idx}/3] ⚠️ No products found for "{kw}"')
+            
+            # Build multi-keyword response
+            blue_ocean_data = {
+                'original_keyword': user_keyword,
+                'keywords': keywords_list,
+                'multi_keyword_mode': True
+            }
+            
+            # Create combined result
+            result = {
+                'success': True,
+                'products': all_products,
+                'stats': {
+                    'scanned': sum(s['stats']['scanned'] for s in all_stats),
+                    'safe': sum(s['stats']['safe'] for s in all_stats),
+                    'profitable': sum(s['stats']['profitable'] for s in all_stats),
+                    'final_count': len(all_products)
+                },
+                'multi_keyword_stats': all_stats,
+                'debug_mode_enabled': False
+            }
+            
+        else:
+            # ⚠️ FALLBACK: Old single-keyword mode
+            target_keyword = blue_ocean_result['suggested_keyword']
+            reasoning = blue_ocean_result['reasoning']
+            
+            app.logger.warning(f'⚠️ Single-keyword fallback mode')
+            app.logger.info(f'Blue Ocean Keyword: {target_keyword}')
+            app.logger.info(f'Reasoning: {reasoning}')
+            
+            log_activity('sourcing', 
+                        f'🎯 Blue Ocean Keyword: "{target_keyword}"', 
+                        'success',
+                        {'reasoning': reasoning, 'original': user_keyword})
+            
+            blue_ocean_data = {
+                'original_keyword': user_keyword,
+                'suggested_keyword': target_keyword,
+                'reasoning': reasoning,
+                'trend_score': blue_ocean_result.get('trend_score', 0),
+                'competition_score': blue_ocean_result.get('competition_score', 0),
+                'multi_keyword_mode': False
+            }
+            
+            # Execute unified Smart Sniper engine - REAL DATA ONLY
+            result = execute_smart_sourcing(target_keyword)
+            
     else:
         # Case A: Direct keyword search
         target_keyword = user_keyword
         blue_ocean_data = None
         log_activity('sourcing', f'📌 Direct search mode: "{target_keyword}"', 'info')
-    
-    # Execute unified Smart Sniper engine - REAL DATA ONLY
-    result = execute_smart_sourcing(target_keyword)
+        
+        # Execute unified Smart Sniper engine - REAL DATA ONLY
+        result = execute_smart_sourcing(target_keyword)
     
     if not result['success']:
         return jsonify({'error': result.get('error', 'Unknown error'), 'stage_stats': result.get('stage_stats', {})}), 500
@@ -2560,7 +2680,7 @@ def start_sourcing():
     response_data = {
         'success': True,
         'mode': mode,
-        'keyword': target_keyword,
+        'keyword': target_keyword if mode == 'direct' else '다양한 카테고리',
         'stats': result['stats'],
         'stage_stats': result.get('stage_stats', {}),  # NEW: Stage-by-stage breakdown
         'debug_mode_enabled': result.get('debug_mode_enabled', False),
@@ -2569,6 +2689,10 @@ def start_sourcing():
     
     if blue_ocean_data:
         response_data['blue_ocean_analysis'] = blue_ocean_data
+        
+        # Add multi-keyword stats if available
+        if result.get('multi_keyword_stats'):
+            response_data['multi_keyword_stats'] = result['multi_keyword_stats']
     
     app.logger.info(f'=== Sourcing Completed: {result["stats"]["final_count"]} products ===')
     
