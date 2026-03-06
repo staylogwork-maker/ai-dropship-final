@@ -153,7 +153,7 @@ def get_api_status() -> Dict[str, Dict[str, str]]:
         'color': 'green'
     }
     
-    # Naver Shopping API
+    # Naver Shopping API - 실제 API 호출 테스트
     naver_client_id = get_config('naver_client_id')
     naver_client_secret = get_config('naver_client_secret')
     if not naver_client_id or not naver_client_secret:
@@ -163,21 +163,57 @@ def get_api_status() -> Dict[str, Dict[str, str]]:
             'color': 'gray'
         }
     else:
-        # Naver API 키 길이: Client ID = 20자, Client Secret = 10자
-        if len(naver_client_id) >= 15 and len(naver_client_secret) >= 8:
-            status['naver'] = {
-                'status': 'valid',
-                'message': '✅ 네이버 쇼핑 API 설정됨',
-                'color': 'green'
-            }
-        else:
+        try:
+            import requests
+            # 실제 네이버 쇼핑 API 호출 (검색 1건)
+            response = requests.get(
+                'https://openapi.naver.com/v1/search/shop.json',
+                headers={
+                    'X-Naver-Client-Id': naver_client_id,
+                    'X-Naver-Client-Secret': naver_client_secret
+                },
+                params={'query': '테스트', 'display': 1},
+                timeout=5
+            )
+            
+            if response.status_code == 200:
+                status['naver'] = {
+                    'status': 'valid',
+                    'message': '✅ 네이버 쇼핑 API 정상 작동',
+                    'color': 'green'
+                }
+            elif response.status_code == 401:
+                status['naver'] = {
+                    'status': 'invalid',
+                    'message': '❌ 인증 실패 (Client ID/Secret 오류)',
+                    'color': 'red'
+                }
+            elif response.status_code == 403:
+                status['naver'] = {
+                    'status': 'invalid',
+                    'message': '❌ 권한 없음 (API 미승인 또는 만료)',
+                    'color': 'red'
+                }
+            elif response.status_code == 429:
+                status['naver'] = {
+                    'status': 'valid',
+                    'message': '⚠️ API 키 유효 (호출 한도 초과)',
+                    'color': 'green'
+                }
+            else:
+                status['naver'] = {
+                    'status': 'invalid',
+                    'message': f'❌ HTTP {response.status_code} 오류',
+                    'color': 'red'
+                }
+        except Exception as e:
             status['naver'] = {
                 'status': 'invalid',
-                'message': f'❌ Client ID/Secret 길이 오류 (ID:{len(naver_client_id)}, Secret:{len(naver_client_secret)})',
+                'message': f'❌ 연결 실패: {str(e)[:50]}',
                 'color': 'red'
             }
     
-    # Coupang Partners API
+    # Coupang Partners API - 실제 API 호출 테스트
     coupang_access = get_config('coupang_access_key')
     coupang_secret = get_config('coupang_secret_key')
     if not coupang_access or not coupang_secret:
@@ -187,17 +223,62 @@ def get_api_status() -> Dict[str, Dict[str, str]]:
             'color': 'gray'
         }
     else:
-        # Coupang API 키는 길이가 다양하므로 최소 8자 이상만 체크
-        if len(coupang_access) >= 8 and len(coupang_secret) >= 8:
-            status['coupang'] = {
-                'status': 'valid',
-                'message': '✅ 쿠팡 파트너스 API 설정됨',
-                'color': 'green'
-            }
-        else:
+        try:
+            import requests
+            import hmac
+            import hashlib
+            import time
+            
+            # Coupang API 서명 생성
+            method = 'GET'
+            path = '/v2/providers/affiliate_open_api/apis/openapi/v1/products/bestcategories/dpg'
+            timestamp = str(int(time.time() * 1000))
+            
+            message = timestamp + method + path
+            signature = hmac.new(
+                coupang_secret.encode('utf-8'),
+                message.encode('utf-8'),
+                hashlib.sha256
+            ).hexdigest()
+            
+            # API 호출
+            response = requests.get(
+                f'https://api-gateway.coupang.com{path}',
+                headers={
+                    'Authorization': f'CEA algorithm=HmacSHA256, access-key={coupang_access}, signed-date={timestamp}, signature={signature}',
+                    'Content-Type': 'application/json'
+                },
+                timeout=5
+            )
+            
+            if response.status_code == 200:
+                status['coupang'] = {
+                    'status': 'valid',
+                    'message': '✅ 쿠팡 파트너스 API 정상 작동',
+                    'color': 'green'
+                }
+            elif response.status_code == 401:
+                status['coupang'] = {
+                    'status': 'invalid',
+                    'message': '❌ 인증 실패 (Access Key/Secret 오류)',
+                    'color': 'red'
+                }
+            elif response.status_code == 403:
+                status['coupang'] = {
+                    'status': 'invalid',
+                    'message': '❌ 권한 없음 (파트너 미승인)',
+                    'color': 'red'
+                }
+            else:
+                status['coupang'] = {
+                    'status': 'invalid',
+                    'message': f'❌ HTTP {response.status_code} 오류',
+                    'color': 'red'
+                }
+        except Exception as e:
             status['coupang'] = {
                 'status': 'invalid',
-                'message': f'❌ Access Key/Secret 길이 오류 (Access:{len(coupang_access)}, Secret:{len(coupang_secret)})',
+                'message': f'❌ 연결 실패: {str(e)[:50]}',
                 'color': 'red'
             }
     
