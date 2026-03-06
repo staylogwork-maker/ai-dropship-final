@@ -45,63 +45,21 @@ def translate_keyword_to_english(korean_keyword: str) -> str:
     except:
         openai = None
     
-    # 1단계: Gemini API 시도 (무료, 1,500 calls/day)
-    gemini_key = get_config('gemini_api_key')
-    if gemini_key:
-        try:
-            genai.configure(api_key=gemini_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
-            
-            prompt = f"""Translate this Korean e-commerce keyword to English for AliExpress search.
-Output ONLY the English keyword, nothing else.
-
-Rules:
-1. Use simple, searchable product category terms
-2. Remove brand names, model numbers
-3. Focus on what the product IS or DOES
-4. Keep it short (2-5 words)
-
-Korean: {korean_keyword}
-English:"""
-            
-            response = model.generate_content(prompt)
-            english = response.text.strip().lower()
-            
-            logger.info(f"[Translation-Gemini] ✅ {korean_keyword} → {english}")
-            return english
-            
-        except Exception as e:
-            logger.warning(f"[Translation-Gemini] ❌ Failed: {e}")
+    # 🔧 AI 번역 비활성화: 규칙 기반 매핑으로 완전 대체
+    # 이유: API 호출 실패 시 비용 낭비 + 불안정한 번역 품질
+    # 해결책: 아래 translation_map에 모든 주요 카테고리 추가
     
-    # 2단계: OpenAI GPT-4o-mini 시도 (유료)
-    openai_key = get_config('openai_api_key')
-    if openai_key:
-        try:
-            openai.api_key = openai_key
-            
-            response = openai.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{
-                    "role": "user",
-                    "content": f"""Translate this Korean e-commerce keyword to English for AliExpress search.
-Output ONLY the English keyword, nothing else.
-
-Korean: {korean_keyword}
-English:"""
-                }],
-                max_tokens=20,
-                temperature=0.3
-            )
-            
-            english = response.choices[0].message.content.strip().lower()
-            logger.info(f"[Translation-OpenAI] ✅ {korean_keyword} → {english}")
-            return english
-            
-        except Exception as e:
-            logger.warning(f"[Translation-OpenAI] ❌ Failed: {e}")
-    
-    # 3단계: 규칙 기반 매핑 (100% 폴백) - 확장판
+    # ✅ 규칙 기반 번역 (Primary Method)
+    # 모든 제품 카테고리를 정확하게 매핑
     translation_map = {
+        # 🎯 핵심: 복합어는 항상 먼저 체크 (긴 것부터)
+        '실리콘 몰드': 'silicone mold',
+        '실리콘 금형': 'silicone mold',
+        '실리콘 조리도구': 'silicone cooking utensil',
+        '실리콘 주방용품': 'silicone kitchenware',
+        '실리콘 베이킹': 'silicone baking',
+        '실리콘 케이크': 'silicone cake mold',
+        
         # 가전제품
         '드라이기': 'hair dryer',
         '헤어드라이기': 'hair dryer',
@@ -165,14 +123,18 @@ English:"""
         '가방': 'bag',
         '지갑': 'wallet',
         
-        # 주방/조리
+        # 주방/조리 (복합어 먼저, 긴 것부터)
+        '실리콘 조리도구 세트': 'silicone cooking utensil set',
+        '실리콘 주방용품 세트': 'silicone kitchenware set',
         '조리도구': 'cooking utensil',
-        '실리콘': 'silicone',
         '세트': 'set',
         '냄비': 'pot',
         '프라이팬': 'frying pan',
         '칼': 'knife',
         '도마': 'cutting board',
+        
+        # 🚫 주의: '실리콘' 단독은 제거 (실리콘 실란트 오류 방지)
+        # '실리콘': 'silicone',  # ← 이거 때문에 문제 발생!
         
         # 기타
         '자동': 'automatic',

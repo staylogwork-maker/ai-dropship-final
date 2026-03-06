@@ -111,7 +111,18 @@ Korean:"""
     
     # 3단계: 규칙 기반 매핑 (100% 폴백)
     translation_map = {
-        # 🔧 복합어 우선 매칭 (순서 중요!)
+        # 🔧 복합어 우선 매칭 (긴 것부터!)
+        # 실리콘 제품 (긴 복합어가 먼저 매칭됨)
+        'silicone cooking utensil': '실리콘 조리도구',
+        'silicone kitchenware': '실리콘 주방용품',
+        'silicone baking': '실리콘 베이킹',
+        'silicone mold': '실리콘 몰드',
+        'silicone mould': '실리콘 금형',
+        'baking mold': '베이킹 몰드',
+        'cake mold': '케이크 틀',
+        'silicone': '실리콘',  # 🔧 폴백: 위 패턴 실패 시
+        
+        # 가전/전자
         'hair dryer': '헤어 드라이어',
         'power bank': '보조배터리',
         'air purifier': '공기청정기',
@@ -120,12 +131,14 @@ Korean:"""
         'bluetooth speaker': '블루투스 스피커',
         'pet feeder': '반려동물 급식기',
         'fan blade': '선풍기 날개',
-        'mouse pad': '마우스 패드',  # 🔧 추가: 마우스패드
-        'mousepad': '마우스패드',  # 🔧 추가: 마우스패드 (붙여쓰기)
-        'gaming mouse pad': '게이밍 마우스패드',  # 🔧 추가
-        'wrist rest': '손목받침대',  # 🔧 추가: 손목쿠션
-        'palm rest': '손목받침대',  # 🔧 추가
-        'keyboard pad': '키보드 패드',  # 🔧 추가: 키보드 손목받침
+        
+        # 게이밍/컴퓨터
+        'gaming mouse pad': '게이밍 마우스패드',
+        'mouse pad': '마우스 패드',
+        'mousepad': '마우스패드',
+        'wrist rest': '손목받침대',
+        'palm rest': '손목받침대',
+        'keyboard pad': '키보드 패드',
         
         # 전자제품
         'phone': '휴대폰',
@@ -269,23 +282,40 @@ def clean_product_title(title: str) -> str:
         정제된 키워드 (예: "Bicycle Phone Holder")
     """
     # 🔧 먼저 주요 카테고리 키워드 추출 (맥락 보존)
+    # ⚠️ 긴 패턴부터 매칭 (복합어 우선)
     category_patterns = {
+        # 실리콘 제품 (복합어 우선, 긴 패턴이 먼저 매칭됨)
+        'silicone mold': ['silicone mold', 'silicone mould', 'baking mold', 'cake mold'],
+        'silicone cooking utensil': ['silicone cooking utensil', 'silicone kitchen tool', 'silicone spatula'],
+        'silicone kitchenware': ['silicone kitchenware', 'silicone kitchen', 'kitchen silicone'],
+        'silicone': ['silicone'],  # 🔧 폴백: 위 패턴에 매칭 안 되면 단독 "silicone"
+        
+        # 가전/전자
         'hair dryer': ['hair dryer', 'hairdryer', 'hair blower'],
+        'air purifier': ['air purifier', 'air cleaner'],
+        'power bank': ['power bank', 'portable charger'],
+        
+        # 액세서리
         'phone holder': ['phone holder', 'phone mount', 'phone stand'],
         'car charger': ['car charger', 'vehicle charger'],
-        'power bank': ['power bank', 'portable charger'],
         'bluetooth speaker': ['bluetooth speaker', 'wireless speaker'],
-        'air purifier': ['air purifier', 'air cleaner'],
+        
+        # 게이밍/컴퓨터
+        'gaming mouse pad': ['gaming mouse pad', 'gaming mousepad'],
+        'mouse pad': ['mouse pad', 'mousepad'],
+        'wrist rest': ['wrist rest', 'palm rest', 'keyboard wrist rest'],
+        
+        # 반려동물
         'pet feeder': ['pet feeder', 'automatic feeder'],
-        'mouse pad': ['mouse pad', 'mousepad', 'gaming mouse pad', 'gaming mousepad'],  # 🔧 추가
-        'wrist rest': ['wrist rest', 'palm rest', 'keyboard wrist rest'],  # 🔧 추가
     }
     
     title_lower = title.lower()
     main_category = None
     
-    for category, patterns in category_patterns.items():
-        for pattern in patterns:
+    # 🔧 긴 패턴부터 매칭 (복합어 우선)
+    # "silicone mold"를 먼저 매칭하고, "silicone" 단독은 나중에
+    for category, patterns in sorted(category_patterns.items(), key=lambda x: -max(len(p) for p in x[1])):
+        for pattern in sorted(patterns, key=lambda p: -len(p)):
             if pattern in title_lower:
                 main_category = category
                 break
