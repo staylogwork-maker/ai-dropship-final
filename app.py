@@ -2172,24 +2172,99 @@ def execute_smart_sourcing(keyword):
     # Step 4: Sort by net profit (descending)
     profitable_products.sort(key=lambda x: x['analysis']['profit'], reverse=True)
     
-    # Step 4.3: 🎯 Remove duplicate products (same title)
+    # Step 4.3: 🎯 Remove duplicate products (same title or similar)
     app.logger.info(f'[Smart Sniper] Removing duplicate products...')
-    seen_titles = set()
+    
+    def calculate_title_similarity(title1, title2):
+        """제목 유사도 계산 (0-100%)"""
+        import re
+        
+        # 불용어 목록 (의미 없는 단어)
+        stopwords = {
+            'for', 'with', 'and', 'the', 'from', 'tws', 'new', 'hot', 'sale',
+            'pro', 'mini', 'max', 'ultra', 'plus', 'lite'
+        }
+        
+        # 핵심 키워드 추출 (4글자 이상, 알파벳만, 불용어 제외)
+        def extract_keywords(title):
+            words = re.findall(r'\b[a-z]{4,}\b', title.lower())
+            return set(w for w in words if w not in stopwords)
+        
+        words1 = extract_keywords(title1)
+        words2 = extract_keywords(title2)
+        
+        if not words1 or not words2:
+            return 0.0
+        
+        common = words1 & words2
+        total = words1 | words2
+        return len(common) / len(total) * 100
+    
+    # 🔍 Load existing products from DB (last 30 days) for global duplicate check
+    from datetime import datetime, timedelta
+    thirty_days_ago = (datetime.now() - timedelta(days=30)).isoformat()
+    
+    conn_dup = get_db()
+    cursor_dup = conn_dup.cursor()
+    cursor_dup.execute("""
+        SELECT title_cn
+        FROM sourced_products
+        WHERE created_at >= ?
+        AND status = 'pending'
+    """, (thirty_days_ago,))
+    
+    existing_titles = [row[0] for row in cursor_dup.fetchall()]
+    conn_dup.close()
+    
+    app.logger.info(f'[Smart Sniper] Loaded {len(existing_titles)} existing products for similarity check')
+    
     unique_products = []
     duplicate_count = 0
+    global_duplicate_count = 0
     
     for product in profitable_products:
-        # Normalize title for comparison (lowercase, remove extra spaces)
-        normalized_title = ' '.join(product['title'].lower().split())
+        is_duplicate = False
+        current_title = product['title']
         
-        if normalized_title not in seen_titles:
-            seen_titles.add(normalized_title)
+        # 1️⃣ 현재 검색 결과 내 중복 검사
+        for existing in unique_products:
+            similarity = calculate_title_similarity(current_title, existing['title'])
+            
+            # 70% 이상 유사하면 중복으로 간주
+            if similarity >= 70:
+                is_duplicate = True
+                duplicate_count += 1
+                app.logger.debug(
+                    f'[Smart Sniper] 🔄 Current-batch duplicate removed ({similarity:.1f}% similar)\n'
+                    f'  Original: {existing["title"][:60]}...\n'
+                    f'  Duplicate: {current_title[:60]}...'
+                )
+                break
+        
+        # 2️⃣ DB에 저장된 기존 상품과 중복 검사 (최근 30일)
+        if not is_duplicate:
+            for existing_title in existing_titles:
+                similarity = calculate_title_similarity(current_title, existing_title)
+                
+                # 70% 이상 유사하면 중복으로 간주
+                if similarity >= 70:
+                    is_duplicate = True
+                    global_duplicate_count += 1
+                    app.logger.info(
+                        f'[Smart Sniper] ⚠️ Global duplicate detected ({similarity:.1f}% similar)\n'
+                        f'  Existing in DB: {existing_title[:60]}...\n'
+                        f'  New (blocked): {current_title[:60]}...'
+                    )
+                    break
+        
+        if not is_duplicate:
             unique_products.append(product)
-        else:
-            duplicate_count += 1
-            app.logger.debug(f'[Smart Sniper] Duplicate removed: {product["title"][:50]}...')
     
-    app.logger.info(f'[Smart Sniper] Removed {duplicate_count} duplicates, {len(unique_products)} unique products remain')
+    app.logger.info(
+        f'[Smart Sniper] Removed {duplicate_count} current-batch duplicates + '
+        f'{global_duplicate_count} global duplicates (DB check), '
+        f'{len(unique_products)} unique products remain'
+    )
     profitable_products = unique_products
     
     # Step 4.5: 🚫 Filter out previously rejected products (only non-expired)
