@@ -45,12 +45,36 @@ def translate_keyword_to_english(korean_keyword: str) -> str:
     except:
         openai = None
     
-    # 🔧 AI 번역 비활성화: 규칙 기반 매핑으로 완전 대체
-    # 이유: API 호출 실패 시 비용 낭비 + 불안정한 번역 품질
-    # 해결책: 아래 translation_map에 모든 주요 카테고리 추가
+    # 🤖 AI 번역 (1순위): Gemini API (무료, 빠름, 정확함)
+    gemini_key = get_config('gemini_api_key')
+    if gemini_key:
+        try:
+            genai.configure(api_key=gemini_key)
+            model = genai.GenerativeModel('gemini-2.0-flash')  # ✅ 최신 안정 버전
+            
+            prompt = f"""Translate this Korean e-commerce keyword to English for AliExpress search.
+Output ONLY the English keyword, nothing else.
+
+Rules:
+1. Use simple, searchable product category terms
+2. Remove brand names, model numbers
+3. Focus on what the product IS or DOES
+4. Keep it short (2-5 words)
+
+Korean: {korean_keyword}
+English:"""
+            
+            response = model.generate_content(prompt)
+            english = response.text.strip().lower()
+            
+            logger.info(f"[Translation-Gemini] ✅ {korean_keyword} → {english}")
+            return english
+            
+        except Exception as e:
+            logger.warning(f"[Translation-Gemini] ❌ Failed: {e}")
     
-    # ✅ 규칙 기반 번역 (Primary Method)
-    # 모든 제품 카테고리를 정확하게 매핑
+    # 📋 규칙 기반 번역 (2순위, 폴백)
+    # AI 실패 시 100% 번역 보장
     translation_map = {
         # 🎯 핵심: 복합어는 항상 먼저 체크 (긴 것부터)
         '실리콘 몰드': 'silicone mold',
@@ -319,7 +343,7 @@ def translate_to_english_ai(korean_keyword):
         try:
             import google.generativeai as genai
             genai.configure(api_key=gemini_key)
-            model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            model = genai.GenerativeModel('gemini-2.0-flash')  # ✅ 안정 버전
             response = model.generate_content(prompt)
             result = response.text.strip().lower()
             logger.info(f'[Translation] Gemini: {korean_keyword} → {result}')

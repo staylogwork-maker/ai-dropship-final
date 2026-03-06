@@ -53,7 +53,7 @@ def translate_english_to_korean(english_text: str) -> str:
     if gemini_key:
         try:
             genai.configure(api_key=gemini_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-2.0-flash')  # ✅ 최신 모델
             
             prompt = f"""Translate this English product name to Korean for Naver shopping search.
 Output ONLY the Korean keyword, nothing else.
@@ -250,7 +250,7 @@ Korean:"""
             try:
                 import google.generativeai as genai
                 genai.configure(api_key=gemini_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                model = genai.GenerativeModel('gemini-2.0-flash')  # ✅ 최신 모델
                 
                 prompt = f"""Translate to Korean shopping keyword (output ONLY Korean, no explanation):
 {english_text}"""

@@ -5496,3 +5496,72 @@ if __name__ == '__main__':
     
     # Run app
     app.run(host='0.0.0.0', port=5000, debug=False)
+
+
+# ============================================================================
+# API 키 검증 시스템
+# ============================================================================
+
+@app.route('/api/config/validate-api-keys', methods=['POST'])
+@login_required
+def validate_api_keys_endpoint():
+    """
+    API 키 검증 엔드포인트
+    - 설정 저장 전에 호출
+    - 유효하지 않으면 저장 거부
+    """
+    from api_key_validator import validate_gemini_api_key, validate_openai_api_key
+    
+    data = request.json
+    results = {}
+    
+    # Gemini 검증
+    if 'gemini_api_key' in data:
+        key = data['gemini_api_key']
+        if key and len(key) > 10:
+            is_valid, message = validate_gemini_api_key(key)
+            results['gemini'] = {
+                'valid': is_valid,
+                'message': message
+            }
+            app.logger.info(f"[API Validation] Gemini: {message}")
+    
+    # OpenAI 검증
+    if 'openai_api_key' in data:
+        key = data['openai_api_key']
+        if key and len(key) > 10:
+            is_valid, message = validate_openai_api_key(key)
+            results['openai'] = {
+                'valid': is_valid,
+                'message': message
+            }
+            app.logger.info(f"[API Validation] OpenAI: {message}")
+    
+    return jsonify({
+        'success': True,
+        'results': results
+    })
+
+
+@app.route('/api/config/api-status', methods=['GET'])
+@login_required
+def get_api_status_endpoint():
+    """
+    현재 저장된 API 키 상태 확인
+    - 대시보드에서 실시간 표시
+    """
+    from api_key_validator import get_api_status
+    
+    try:
+        status = get_api_status()
+        return jsonify({
+            'success': True,
+            'status': status
+        })
+    except Exception as e:
+        app.logger.error(f"[API Status] Error: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
