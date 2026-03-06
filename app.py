@@ -5486,18 +5486,6 @@ def start_order_sync_scheduler():
     thread.start()
     app.logger.info('[Order Sync Scheduler] ✅ Scheduler started (10 min interval)')
 
-if __name__ == '__main__':
-    # Ensure required directories exist
-    os.makedirs('static/processed_images', exist_ok=True)
-    os.makedirs('static/exports', exist_ok=True)
-    
-    # Start automatic order sync scheduler
-    start_order_sync_scheduler()
-    
-    # Run app
-    app.run(host='0.0.0.0', port=5000, debug=False)
-
-
 # ============================================================================
 # API 키 검증 시스템
 # ============================================================================
@@ -5544,7 +5532,6 @@ def validate_api_keys_endpoint():
 
 
 @app.route('/api/config/api-status', methods=['GET'])
-@login_required
 def get_api_status_endpoint():
     """
     현재 저장된 API 키 상태 확인
@@ -5564,4 +5551,17 @@ def get_api_status_endpoint():
             'success': False,
             'error': str(e)
         }), 500
+
+
+if __name__ == '__main__':
+    # Ensure required directories exist
+    os.makedirs('static/processed_images', exist_ok=True)
+    os.makedirs('static/exports', exist_ok=True)
+    
+    # Start automatic order sync scheduler
+    start_order_sync_scheduler()
+    
+    # Run app
+    app.run(host='0.0.0.0', port=5000, debug=False)
+
 
