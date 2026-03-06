@@ -1972,19 +1972,23 @@ def analyze_product_profitability(price_cny):
 
 # generate_test_products() DELETED - No mock data allowed
 
-def execute_smart_sourcing(keyword):
+def execute_smart_sourcing(keyword, max_products=3):
     """
     Unified [Smart Sniper] engine for both keyword search and AI discovery
+    
+    Args:
+        keyword: 검색 키워드
+        max_products: 반환할 최대 상품 개수 (기본값: 3, AI 소싱 시 1 사용)
     
     Execution steps:
     1. Hybrid search (Alibaba + AliExpress)
     2. Load config: target_margin, cny_rate, delivery_fee
     3. Margin simulation - drop items not meeting target_margin
     4. Sort by net profit (descending)
-    5. Slice to Top 3 only
-    6. Use ScrapingAnt tokens ONLY for these 3 items to fetch details
+    5. Slice to Top N (max_products)
+    6. Use ScrapingAnt tokens ONLY for these items to fetch details
     
-    Returns: dict with 'success', 'products' (Top 3 only), 'stats', 'stage_stats'
+    Returns: dict with 'success', 'products' (Top N), 'stats', 'stage_stats'
     """
     app.logger.info(f'[Smart Sniper] ========================================')
     app.logger.info(f'[Smart Sniper] Executing REAL sourcing for keyword: {keyword}')
@@ -2364,50 +2368,54 @@ def execute_smart_sourcing(keyword):
     else:
         app.logger.info(f'[Smart Sniper] No active rejections found')
     
-    # Step 5: Select diverse Top 3 (or more if debug mode)
+    # Step 5: Select diverse Top N (configurable via max_products parameter)
     if debug_mode_enabled:
-        # 🐛 DEBUG MODE: Return ALL products instead of just top 3
-        top_3 = profitable_products[:50]  # Cap at 50 to avoid UI overload
-        app.logger.warning(f'[Smart Sniper] 🐛 DEBUG MODE: Returning TOP {len(top_3)} products (not limited to 3)')
-        log_activity('sourcing', f'Step 4/5: 🐛 Debug mode: Top {len(top_3)} selected', 'warning')
+        # 🐛 DEBUG MODE: Return ALL products
+        top_products = profitable_products[:50]  # Cap at 50 to avoid UI overload
+        app.logger.warning(f'[Smart Sniper] 🐛 DEBUG MODE: Returning TOP {len(top_products)} products')
+        log_activity('sourcing', f'Step 4/5: 🐛 Debug mode: Top {len(top_products)} selected', 'warning')
     else:
         # 🎯 Select diverse products (different price ranges)
-        if len(profitable_products) >= 3:
+        if max_products == 1:
+            # AI 소싱 모드: 각 키워드당 1개씩만
+            top_products = profitable_products[:1]
+            app.logger.info(f'[Smart Sniper] 🎯 AI Sourcing mode: Selecting ONLY 1 best product')
+        elif len(profitable_products) >= max_products:
             # Diversify: Top profit + Mid-range + Budget option
-            top_3 = []
+            top_products = []
             
             # 1. Highest profit (best margin)
-            top_3.append(profitable_products[0])
+            top_products.append(profitable_products[0])
             
             # 2. Different price range (중간 가격대)
             first_price = profitable_products[0]['analysis']['sale_price']
             for product in profitable_products[1:]:
                 price_diff = abs(product['analysis']['sale_price'] - first_price) / first_price
                 # 가격이 20% 이상 차이나면 선택
-                if price_diff >= 0.2 and product not in top_3:
-                    top_3.append(product)
+                if price_diff >= 0.2 and product not in top_products:
+                    top_products.append(product)
                     break
             
             # 3. Fallback: Just pick different products
             for product in profitable_products[1:]:
-                if len(top_3) >= 3:
+                if len(top_products) >= max_products:
                     break
-                if product not in top_3:
-                    top_3.append(product)
+                if product not in top_products:
+                    top_products.append(product)
             
-            app.logger.info(f'[Smart Sniper] 🎯 Selected {len(top_3)} diverse products (price ranges: ' + 
-                          ', '.join([f'₩{p["analysis"]["sale_price"]:,}' for p in top_3]) + ')')
+            app.logger.info(f'[Smart Sniper] 🎯 Selected {len(top_products)}/{max_products} diverse products (price ranges: ' + 
+                          ', '.join([f'₩{p["analysis"]["sale_price"]:,}' for p in top_products]) + ')')
         else:
             # Not enough products, just take what we have
-            top_3 = profitable_products[:3]
+            top_products = profitable_products[:max_products]
         
-        log_activity('sourcing', f'Step 4/5: 🎯 Top {len(top_3)} selected (diverse products, rejected excluded)', 'success')
+        log_activity('sourcing', f'Step 4/5: 🎯 Top {len(top_products)} selected (diverse products, rejected excluded)', 'success')
     
     # 📊 STAGE 4: Record final count
-    stage_stats['stage4_final'] = len(top_3)
-    app.logger.info(f'[Smart Sniper] 📊 STAGE 4 COMPLETE: {len(top_3)} products in final selection')
+    stage_stats['stage4_final'] = len(top_products)
+    app.logger.info(f'[Smart Sniper] 📊 STAGE 4 COMPLETE: {len(top_products)} products in final selection')
     
-    if len(top_3) == 0:
+    if len(top_products) == 0:
         # 🚨 CRITICAL: No products after all filters
         app.logger.error('[Smart Sniper] ❌ ZERO products after all filters!')
         app.logger.error(f'[Smart Sniper] 📊 Breakdown: Scraped={stage_stats["stage1_scraped"]}, '
@@ -2472,13 +2480,13 @@ def execute_smart_sourcing(keyword):
     
     # Step 6: Save Top 3 to Database
     log_activity('sourcing', 'Step 6/6: 💾 Saving Top 3 to database', 'in_progress')
-    app.logger.info(f'[Smart Sniper] Attempting to save {len(top_3)} products to database')
+    app.logger.info(f'[Smart Sniper] Attempting to save {len(top_products)} products to database')
     
     conn = get_db()
     cursor = conn.cursor()
     
     saved_count = 0
-    for idx, product in enumerate(top_3):
+    for idx, product in enumerate(top_products):
         try:
             app.logger.info(f'[DB Save {idx+1}] Title: {product["title"][:50]}')
             app.logger.info(f'[DB Save {idx+1}] Price CNY: ¥{product["price"]}')
@@ -2542,7 +2550,7 @@ def execute_smart_sourcing(keyword):
     conn.commit()
     conn.close()
     
-    app.logger.info(f'[Smart Sniper] Completed: {saved_count}/{len(top_3)} products saved to database')
+    app.logger.info(f'[Smart Sniper] Completed: {saved_count}/{len(top_products)} products saved to database')
     app.logger.info(f'[Smart Sniper] 📊 FINAL BREAKDOWN:')
     app.logger.info(f'[Smart Sniper]   Stage 1 (Scraped): {stage_stats["stage1_scraped"]}')
     app.logger.info(f'[Smart Sniper]   Stage 2 (Safe): {stage_stats["stage2_safe"]}')
@@ -2552,12 +2560,12 @@ def execute_smart_sourcing(keyword):
     
     return {
         'success': True,
-        'products': top_3,
+        'products': top_products,
         'stats': {
             'scanned': len(products),
             'safe': len(safe_products),
             'profitable': len(profitable_products),
-            'final_count': len(top_3)
+            'final_count': len(top_products)
         },
         'stage_stats': stage_stats,
         'debug_mode_enabled': debug_mode_enabled,
@@ -2602,8 +2610,8 @@ def start_sourcing():
                 app.logger.info(f'[Keyword {idx}/3] 🔍 Sourcing: "{kw}" ({category})')
                 log_activity('sourcing', f'[{idx}/3] 🔍 Sourcing: "{kw}" ({category})', 'in_progress')
                 
-                # Execute Smart Sniper for this keyword
-                result = execute_smart_sourcing(kw)
+                # Execute Smart Sniper for this keyword (max_products=1 for diversity)
+                result = execute_smart_sourcing(kw, max_products=1)
                 
                 if result['success'] and result['stats']['final_count'] > 0:
                     # Take only 1 product (best one) from this keyword
