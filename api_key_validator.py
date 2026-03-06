@@ -50,14 +50,23 @@ def validate_gemini_api_key(api_key: str, skip_api_call: bool = False) -> Tuple[
         import google.generativeai as genai
         
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.0-flash')
         
-        response = model.generate_content("test")
-        
-        if response.text:
-            result = (True, "✅ Gemini API 키가 유효합니다")
-        else:
-            result = (False, "❌ API 응답이 비어있습니다")
+        # 모델 리스트만 확인 (크레딧 소모 없음)
+        try:
+            models = list(genai.list_models())
+            if models:
+                result = (True, "✅ Gemini API 키가 유효합니다")
+            else:
+                result = (False, "❌ 모델에 접근할 수 없습니다")
+        except Exception as list_error:
+            # 리스트 조회 실패 시 실제 생성 시도
+            model = genai.GenerativeModel('gemini-2.0-flash')
+            response = model.generate_content("test")
+            
+            if response.text:
+                result = (True, "✅ Gemini API 키가 유효합니다")
+            else:
+                result = (False, "❌ API 응답이 비어있습니다")
             
     except Exception as e:
         error_msg = str(e)
@@ -67,7 +76,8 @@ def validate_gemini_api_key(api_key: str, skip_api_call: bool = False) -> Tuple[
         elif "PERMISSION_DENIED" in error_msg:
             result = (False, "❌ API가 활성화되지 않았습니다")
         elif "429" in error_msg or "quota" in error_msg.lower():
-            result = (True, "✅ Gemini API 키 유효 (일시적 할당량 초과)")
+            # 429는 키가 유효하다는 의미 (단, 할당량 초과)
+            result = (True, "✅ Gemini API 키 유효 (할당량 초과됨 - 내일 리셋)")
         else:
             result = (False, f"❌ 검증 실패: {error_msg[:100]}")
     
