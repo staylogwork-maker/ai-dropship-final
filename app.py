@@ -738,7 +738,25 @@ BANNED_KEYWORDS = {
     'baby': ['婴儿', '儿童', '宝宝', '玩具', '奶瓶', '尿布', '童装'],
     'cosmetic': ['化妆品', '护肤', '面膜', '口红', '眼影', '粉底'],
     'replica': ['Nike', 'Adidas', 'Gucci', 'LV', 'Louis Vuitton', 'Chanel', 
-                'Disney', '迪士尼', 'Supreme', 'Rolex', 'Apple']
+                'Disney', '迪士尼', 'Supreme', 'Rolex', 'Apple'],
+    # 🚫 전문 부품 및 자동차 부품 (사용자 요청)
+    'professional_parts': [
+        'bearing', 'bearings', '轴承', 'hub bearing',  # 베어링
+        'motor', 'fan motor', 'wiring', 'plug', '电机', '风扇',  # 모터
+        'resistor', 'relay', 'sensor', 'switch', '传感器',  # 전자부품
+        'auto parts', 'car parts', 'vehicle', '汽车', 'SAIC',  # 자동차 부품
+        'OEM', 'original part', '原装', 'replacement part',  # 순정 부품
+        'engine', 'transmission', 'brake', '发动机'  # 엔진 부품
+    ],
+    # 🚫 의류 (사이즈/핏/반품률 문제로 사용자 요청)
+    'clothing': [
+        'cosplay', 'costume', 'uniform', '制服', '服装', '戏服',  # 코스프레/의상
+        'dress', 'shirt', 'pants', 'jacket', 'coat', 'hoodie',  # 의류
+        'T-shirt', 'sweater', 'jeans', 'skirt', 'suit',  # 의류
+        '衣服', '裤子', '外套', '上衣', '裙子',  # 중국어 의류
+        'clothing', 'apparel', 'garment', 'wear',  # 의류 일반
+        'fashion clothes', 'men clothes', 'women clothes'  # 패션 의류
+    ]
 }
 
 def analyze_blue_ocean_market(user_keyword=''):
@@ -2260,6 +2278,31 @@ def execute_smart_sourcing(keyword, max_products=3):
                            f'Price ¥{product["price"]}, '
                            f'Margin {analysis["margin"]:.1f}%, '
                            f'Profit ₩{analysis["profit"]:,}')
+            
+            # 🚫 CRITICAL: 가격 상한선 체크 (원가 기준)
+            # 사용자 요청: 원가 30만원 넘는 상품은 제외
+            MAX_PURCHASE_PRICE_KRW = 100000  # 구매가 10만원 이하만 허용
+            purchase_price = analysis['purchase_price_krw']
+            
+            if purchase_price > MAX_PURCHASE_PRICE_KRW:
+                app.logger.warning(
+                    f'[Price Filter] 🚫 Too expensive: {product["title"][:40]} | '
+                    f'Purchase price: ₩{purchase_price:,} > ₩{MAX_PURCHASE_PRICE_KRW:,}'
+                )
+                failed_margin_count += 1
+                continue
+            
+            # 🚫 추가 체크: 판매가 상한선 (15만원 이하만 허용)
+            MAX_SALE_PRICE_KRW = 150000
+            sale_price = analysis['sale_price']
+            
+            if sale_price > MAX_SALE_PRICE_KRW:
+                app.logger.warning(
+                    f'[Price Filter] 🚫 Sale price too high: {product["title"][:40]} | '
+                    f'Sale price: ₩{sale_price:,} > ₩{MAX_SALE_PRICE_KRW:,}'
+                )
+                failed_margin_count += 1
+                continue
             
             # Track highest margin product
             if analysis['margin'] > highest_margin:
