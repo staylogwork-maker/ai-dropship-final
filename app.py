@@ -3142,17 +3142,17 @@ def generate_marketing_copy(title, price):
         log_activity('content', f'Failed to generate copy: {str(e)}', 'error')
         return '상품 설명이 준비 중입니다.'
 
-def generate_winning_product_page(title, price, images):
+def generate_winning_product_page(title, price, images, category='기타'):
     """
-    Generate a WINNING product detail page using the 5-section formula.
-    This structure mimics best-selling Coupang/Naver products.
+    Generate a CATEGORY-SPECIFIC product detail page.
+    Each category has its own unique design, tone, and structure.
     
-    5-SECTION FORMULA:
-    1. Hook: "Do you have this problem?" (GIF or strong image)
-    2. Empathy/Solution: "That's why we prepared this." (Product intro)
-    3. Key Points: "3 reasons why this product is special" (Icons + brief)
-    4. Details: Usage shots + spec explanation (Image-text alternating)
-    5. FAQ/Shipping: Frequently asked questions
+    🎯 CATEGORY-SPECIFIC TEMPLATES:
+    - 반려동물: Cute, warm tone with pet emoji
+    - 주방용품: Practical, clean design
+    - 바구니/수납: Organized, minimalist aesthetic
+    - 스포츠: Active, energetic tone
+    - 기타: Universal winning formula
     """
     api_key = get_config('openai_api_key')
     if not api_key:
@@ -3161,6 +3161,9 @@ def generate_winning_product_page(title, price, images):
     # Classify images: lifestyle shots first, detail shots later
     lifestyle_imgs = images[:3] if len(images) >= 3 else images
     detail_imgs = images[3:] if len(images) > 3 else []
+    
+    # 🎯 SELECT TEMPLATE BASED ON CATEGORY
+    app.logger.info(f'[Content Generation] Using category-specific template: {category}')
     
     system_prompt = """You are a TOP-TIER Korean E-commerce Merchandiser specialized in creating WINNING product pages.
 
@@ -3258,10 +3261,54 @@ REMEMBER:
 - Focus on BENEFITS over features
 """
     
-    user_prompt = f"""Create a WINNING product detail page for:
+    # 🎯 CATEGORY-SPECIFIC STYLING
+    category_tones = {
+        '반려동물': {
+            'emoji': '🐾',
+            'colors': 'linear-gradient(135deg, #FFA07A 0%, #FF69B4 100%)',
+            'tone': '귀엽고 따뜻한 말투로 반려동물과 보호자의 행복을 강조',
+            'keywords': '반려동물, 반려견, 반려묘, 펫용품, 강아지용품, 고양이용품'
+        },
+        '주방용품': {
+            'emoji': '👨‍🍳',
+            'colors': 'linear-gradient(135deg, #4CAF50 0%, #8BC34A 100%)',
+            'tone': '실용적이고 깔끔한 말투로 요리의 편리함 강조',
+            'keywords': '주방용품, 조리도구, 요리용품, 주방정리, 식기류, 편리한주방'
+        },
+        '바구니/수납': {
+            'emoji': '📦',
+            'colors': 'linear-gradient(135deg, #9C27B0 0%, #673AB7 100%)',
+            'tone': '정돈되고 미니멀한 말투로 공간 활용 강조',
+            'keywords': '수납용품, 정리함, 바구니, 공간활용, 정리정돈, 수납함'
+        },
+        '스포츠': {
+            'emoji': '⚡',
+            'colors': 'linear-gradient(135deg, #FF5722 0%, #FF9800 100%)',
+            'tone': '활기차고 에너지 넘치는 말투로 건강과 활력 강조',
+            'keywords': '스포츠용품, 운동용품, 헬스용품, 피트니스, 건강관리, 운동'
+        },
+        '기타': {
+            'emoji': '✨',
+            'colors': 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+            'tone': '자연스럽고 설득력 있는 말투로 제품 가치 강조',
+            'keywords': '생활용품, 편리한제품, 실용적, 가성비, 추천상품, 인기상품'
+        }
+    }
+    
+    selected_tone = category_tones.get(category, category_tones['기타'])
+    
+    user_prompt = f"""Create a CATEGORY-SPECIFIC product detail page for:
 
-Product: {title}
-Price: {price:,}원
+🎯 CATEGORY: {category}
+📦 Product: {title}
+💰 Price: {price:,}원
+
+🎨 CATEGORY-SPECIFIC STYLING:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Emoji Theme: {selected_tone['emoji']}
+- Color Scheme: {selected_tone['colors']}
+- Writing Tone: {selected_tone['tone']}
+- SEO Keywords: {selected_tone['keywords']}
 
 🖼️ REAL PRODUCT IMAGES (Use these EXACT URLs):
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -3275,12 +3322,14 @@ IMAGE USAGE:
 1. Replace {{img_1}}, {{img_2}}, etc. with the PROVIDED URLs above
 2. NO placeholder images (via.placeholder.com)
 3. NO section labels like "1. 훅:", "2. 솔루션:" in output
-4. Write natural, flowing marketing copy
-5. END with: [TAGS]: keyword1, keyword2, ... (10 Korean keywords)
+4. Write natural, flowing marketing copy matching the CATEGORY TONE
+5. Use category-specific COLOR SCHEME for CTA button
+6. END with: [TAGS]: keyword1, keyword2, ... (10 Korean keywords related to {category})
 
 TASK:
 Generate complete HTML following the 5-section formula.
 Make it look PROFESSIONAL and PERSUASIVE like top Coupang sellers.
+IMPORTANT: Adapt the writing style and emphasis to match the CATEGORY.
 
 OUTPUT FORMAT:
 Pure HTML code (no markdown, no code blocks).
@@ -3921,9 +3970,13 @@ def generate_content(product_id):
     log_activity('content', f'Generating WINNING content for product {product_id}', 'in_progress')
     
     # 🔥 FIX: Translate English title to Korean
-    from product_matcher import translate_english_to_korean
+    from product_matcher import translate_english_to_korean, classify_category
     korean_title = translate_english_to_korean(product['title_cn'])
     app.logger.info(f'[Content Generation] 🌐 Title: {product["title_cn"]} → {korean_title}')
+    
+    # 🎯 Classify product category for template selection
+    product_category = classify_category(product['title_cn'])
+    app.logger.info(f'[Content Generation] 📦 Category: {product_category}')
     
     # Generate SHORT marketing copy (for summary box)
     marketing_copy = generate_marketing_copy(korean_title, product['price_krw'])
@@ -3937,12 +3990,13 @@ def generate_content(product_id):
         processed_url = process_product_image(img_url)
         processed_images.append(processed_url)
     
-    # Generate WINNING PRODUCT PAGE (5-section structure)
-    app.logger.info(f'[Content Generation] ✨ Generating WINNING 5-section structure')
+    # Generate CATEGORY-SPECIFIC PRODUCT PAGE
+    app.logger.info(f'[Content Generation] ✨ Generating category-specific page for: {product_category}')
     winning_html, seo_tags = generate_winning_product_page(
         title=korean_title,  # 🔥 FIX: Use Korean title
         price=product['price_krw'],
-        images=processed_images
+        images=processed_images,
+        category=product_category  # 🎯 NEW: Category-specific template
     )
     
     # Add notice image at the end
