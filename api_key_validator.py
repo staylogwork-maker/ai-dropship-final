@@ -27,10 +27,12 @@ def validate_gemini_api_key(api_key: str) -> Tuple[bool, str]:
         import google.generativeai as genai
         
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-2.5-flash')  # ✅ 작동하는 최신 모델
         
-        # 간단한 테스트 요청
-        response = model.generate_content("Say 'OK' if you can read this")
+        # gemini-2.0-flash (더 높은 무료 한도)
+        model = genai.GenerativeModel('gemini-2.0-flash')
+        
+        # 간단한 테스트 요청 (최소 토큰)
+        response = model.generate_content("OK")
         
         if response.text:
             return True, "✅ Gemini API 키가 유효합니다"
@@ -45,7 +47,8 @@ def validate_gemini_api_key(api_key: str) -> Tuple[bool, str]:
         elif "PERMISSION_DENIED" in error_msg:
             return False, "❌ API가 활성화되지 않았습니다. Google AI Studio에서 활성화하세요."
         elif "429" in error_msg or "quota" in error_msg.lower():
-            return False, "⚠️ 할당량 초과. 잠시 후 다시 시도하세요."
+            # 할당량 초과는 키가 유효하다는 의미
+            return True, "✅ Gemini API 키 유효 (일시적 할당량 초과)"
         else:
             return False, f"❌ 검증 실패: {error_msg[:100]}"
 
